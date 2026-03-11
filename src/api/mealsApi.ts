@@ -4,7 +4,7 @@ import { buildUrl } from '../utils/url.utils';
 
 import { clientApi } from './client';
 
-const BASE_PATH = '/meals';
+const BASE_PATH = '/meals/';
 
 export const fetchMeals = async (
   filter: FetchFilters,

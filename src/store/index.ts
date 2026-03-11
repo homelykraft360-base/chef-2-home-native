@@ -5,15 +5,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authSlice } from './authSlice';
 import { themeSlice } from './themeSlice';
 
-const persistConfig = {
-  key: 'session-hub',
+const authPersistConfig = {
+  key: 'session-hub-auth',
+  storage: AsyncStorage,
+};
+const themePersistConfig = {
+  key: 'session-hub-theme',
   storage: AsyncStorage,
 };
 
 export const store = configureStore({
   reducer: {
-    auth: persistReducer(persistConfig, authSlice.reducer),
-    theme: persistReducer(persistConfig, themeSlice.reducer),
+    auth: persistReducer(authPersistConfig, authSlice.reducer),
+    theme: persistReducer(themePersistConfig, themeSlice.reducer),
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({ serializableCheck: false }),

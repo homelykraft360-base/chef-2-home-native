@@ -53,7 +53,7 @@ function normalizeAuthResponse(raw: {
 
 export const login = async (request: SignInRequest): Promise<OTPResponse> => {
   const { data, error } = await tryCatch<MessageResponse>(
-    clientApi.post('/auth/login', request),
+    clientApi.post('/auth/login/', request),
   );
   return {
     message: data?.message,
@@ -64,7 +64,7 @@ export const login = async (request: SignInRequest): Promise<OTPResponse> => {
 
 export const signOut = async (): Promise<MessageResponse> => {
   const { data, error } = await tryCatch<MessageResponse>(
-    clientApi.post('/auth/logout'),
+    clientApi.post('/auth/logout/'),
   );
   return {
     message: data?.message,
@@ -76,7 +76,7 @@ export const resendCode = async (
   request: SignInRequest | SignUpRequest,
 ): Promise<OTPResponse> => {
   const { data, error } = await tryCatch<MessageResponse>(
-    clientApi.post('/auth/resend-otp', request),
+    clientApi.post('/auth/resend-otp/', request),
   );
   return {
     message: data?.message,
@@ -87,7 +87,7 @@ export const resendCode = async (
 
 export const signUp = async (request: SignUpRequest): Promise<OTPResponse> => {
   const { data, error } = await tryCatch<MessageResponse>(
-    clientApi.post('/auth/create-account', request),
+    clientApi.post('/auth/create-account/', request),
   );
   return {
     message: data?.message,
@@ -100,7 +100,7 @@ export const verifyOTP = async (
   payload: VerifyOTPRequest,
 ): Promise<AuthResponse> => {
   const { data, error } = await tryCatch<Record<string, unknown>>(
-    clientApi.post('/auth/verify-otp', payload),
+    clientApi.post('/auth/verify-otp/', payload),
   );
   if (error || !data) return { accessToken: undefined, user: undefined, error: error ?? 'No response' };
   const normalized = normalizeAuthResponse(
@@ -113,7 +113,7 @@ export const signInWithGoogle = async (
   idToken: string,
 ): Promise<AuthResponse> => {
   const { data, error } = await tryCatch<Record<string, unknown>>(
-    clientApi.post('/auth/google', { id_token: idToken }),
+    clientApi.post('/auth/google/', { id_token: idToken }),
   );
   if (error || !data) return { accessToken: undefined, user: undefined, error: error ?? 'No response' };
   const normalized = normalizeAuthResponse(

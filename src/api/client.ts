@@ -18,10 +18,23 @@ const baseUrl =
   Constants.expoConfig?.extra?.baseUrl ?? 'http://localhost:8000';
 
 const clientApi = axios.create({
-  baseURL: `${baseUrl}/api/v1`,
+  baseURL: `${baseUrl}/api/v1/`,
   timeout: 10000,
   withCredentials: false,
 });
+
+/** Keep Authorization header in sync with Redux so every request gets the token. */
+function syncAuthHeader() {
+  const token = store.getState().auth.token;
+  const value = token ? `Bearer ${token}` : '';
+  clientApi.defaults.headers.common['Authorization'] = value;
+  clientApi.defaults.headers.get['Authorization'] = value;
+  clientApi.defaults.headers.post['Authorization'] = value;
+  clientApi.defaults.headers.patch['Authorization'] = value;
+  clientApi.defaults.headers.put['Authorization'] = value;
+}
+syncAuthHeader();
+store.subscribe(syncAuthHeader);
 
 const attemptTokenRefresh = async (
   originalRequest: CustomAxiosError,
@@ -30,7 +43,7 @@ const attemptTokenRefresh = async (
     originalRequest._retry = true;
     try {
       const response = await axios.post(
-        `${baseUrl}/api/v1/auth/refresh`,
+        `${baseUrl}/api/v1/auth/refresh/`,
         {},
         { baseURL: undefined },
       );
@@ -51,10 +64,9 @@ const attemptTokenRefresh = async (
 
 clientApi.interceptors.request.use(
   (config: InternalAxiosRequestConfig): InternalAxiosRequestConfig => {
-    const state = store.getState();
-    const token = state.auth.token;
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    const token = store.getState().auth.token;
+    if (token && config.headers) {
+      (config.headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
     }
     return config;
   },

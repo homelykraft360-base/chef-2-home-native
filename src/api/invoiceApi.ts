@@ -3,7 +3,7 @@ import { tryCatch } from '../utils/error.utils';
 
 import { clientApi } from './client';
 
-const BASE_PATH = '/invoices';
+const BASE_PATH = '/invoices/';
 
 export const persistInvoiceCreation = async (
   payload: SubscriptionCreationRequest,
