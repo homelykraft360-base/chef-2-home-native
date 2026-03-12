@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Button } from 'react-native-paper';
+import { Icon } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
 
 import { signOut } from '../../api/authApi';
@@ -76,15 +76,15 @@ export default function SettingsScreen() {
         {tab === 'edit' && user ? <EditProfileTab /> : null}
         {tab === 'preferences' ? <PreferencesTab /> : null}
       </View>
-      <View style={styles.footer}>
-        <Button
-          mode="outlined"
-          onPress={handleSignOut}
-          style={styles.signOutBtn}
-        >
-          Sign out
-        </Button>
-      </View>
+      <TouchableOpacity
+        style={styles.signOutFab}
+        onPress={handleSignOut}
+        activeOpacity={0.8}
+        accessibilityLabel="Sign out"
+        accessibilityRole="button"
+      >
+        <Icon source="power" size={22} color={CHEF_ORANGE} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -126,6 +126,22 @@ const styles = StyleSheet.create({
     backgroundColor: CHEF_ORANGE,
   },
   tabContent: { flex: 1, paddingHorizontal: 24 },
-  footer: { padding: 24, paddingBottom: 48 },
-  signOutBtn: {},
+  signOutFab: {
+    position: 'absolute',
+    bottom: 30,
+    right: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 3,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
 });
