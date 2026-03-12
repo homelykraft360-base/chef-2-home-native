@@ -26,6 +26,13 @@ export default function EditProfileCard({
     `${user.firstName} ${user.lastName}`.trim(),
   );
   const [email, setEmail] = useState(user.email ?? '');
+  const [streetAddress1, setStreetAddress1] = useState(
+    user.address?.streetAddress1 ?? '',
+  );
+  const [streetAddress2, setStreetAddress2] = useState(
+    user.address?.streetAddress2 ?? '',
+  );
+  const [city, setCity] = useState(user.address?.city ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,9 +49,9 @@ export default function EditProfileCard({
       lastName: parts.slice(1).join(' '),
       email: email.trim(),
       address: {
-        streetAddress1: user.address?.streetAddress1 ?? '',
-        streetAddress2: user.address?.streetAddress2 ?? '',
-        city: user.address?.city ?? '',
+        streetAddress1: streetAddress1.trim(),
+        streetAddress2: streetAddress2.trim(),
+        city: city.trim(),
         state: user.address?.state ?? '',
       },
     });
@@ -89,6 +96,54 @@ export default function EditProfileCard({
             editable={!loading}
           />
         </View>
+        <View style={styles.field}>
+          <Text style={styles.label}>Street Address 1</Text>
+          <TextInput
+            style={styles.input}
+            value={streetAddress1}
+            onChangeText={setStreetAddress1}
+            placeholder=""
+            placeholderTextColor={GRAY_600}
+            editable={!loading}
+            maxLength={100}
+          />
+        </View>
+        <View style={styles.field}>
+          <Text style={styles.label}>Street Address 2</Text>
+          <TextInput
+            style={styles.input}
+            value={streetAddress2}
+            onChangeText={setStreetAddress2}
+            placeholder=""
+            placeholderTextColor={GRAY_600}
+            editable={!loading}
+            maxLength={100}
+          />
+        </View>
+        <View style={styles.row}>
+          <View style={[styles.field, styles.halfField]}>
+            <Text style={styles.label}>City</Text>
+            <TextInput
+              style={styles.input}
+              value={city}
+              onChangeText={setCity}
+              placeholder=""
+              placeholderTextColor={GRAY_600}
+              editable={!loading}
+              maxLength={50}
+            />
+          </View>
+          <View style={[styles.field, styles.halfField]}>
+            <Text style={styles.label}>State</Text>
+            <TextInput
+              style={[styles.input, styles.inputDisabled]}
+              value={user.address?.state ?? ''}
+              placeholder=""
+              placeholderTextColor={GRAY_600}
+              editable={false}
+            />
+          </View>
+        </View>
         {error ? <Text style={styles.errorText}>{error}</Text> : null}
         <Button
           mode="contained"
@@ -124,6 +179,14 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   field: { marginBottom: 16 },
+  row: {
+    flexDirection: 'row',
+    gap: 16,
+  },
+  halfField: { flex: 1 },
+  inputDisabled: {
+    backgroundColor: '#f3f4f6',
+  },
   label: {
     fontSize: 14,
     fontWeight: '500',

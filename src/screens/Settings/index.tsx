@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -16,8 +17,9 @@ import { CHEF_ORANGE, GRAY_600 } from '../../constants/theme';
 
 import EditProfileTab from './EditProfileTab';
 import PreferencesTab from './PreferencesTab';
+import SecuritySettingsTab from './SecuritySettingsTab';
 
-type TabId = 'edit' | 'preferences';
+type TabId = 'edit' | 'preferences' | 'security';
 
 export default function SettingsScreen() {
   const dispatch = useDispatch();
@@ -41,7 +43,12 @@ export default function SettingsScreen() {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Account settings</Text>
-        <View style={styles.tabRow}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabScroll}
+          contentContainerStyle={styles.tabRow}
+        >
           <TouchableOpacity
             onPress={() => setTab('edit')}
             style={styles.tab}
@@ -70,11 +77,26 @@ export default function SettingsScreen() {
             </Text>
             {tab === 'preferences' && <View style={styles.tabIndicator} />}
           </TouchableOpacity>
-        </View>
+          <TouchableOpacity
+            onPress={() => setTab('security')}
+            style={styles.tab}
+          >
+            <Text
+              style={[
+                styles.tabText,
+                tab === 'security' && styles.tabTextActive,
+              ]}
+            >
+              Security Settings
+            </Text>
+            {tab === 'security' && <View style={styles.tabIndicator} />}
+          </TouchableOpacity>
+        </ScrollView>
       </View>
       <View style={styles.tabContent}>
         {tab === 'edit' && user ? <EditProfileTab /> : null}
         {tab === 'preferences' ? <PreferencesTab /> : null}
+        {tab === 'security' && user ? <SecuritySettingsTab /> : null}
       </View>
       <TouchableOpacity
         style={styles.signOutFab}
@@ -99,10 +121,13 @@ const styles = StyleSheet.create({
     color: '#101928',
     marginBottom: 24,
   },
-  tabRow: {
-    flexDirection: 'row',
+  tabScroll: {
     borderBottomWidth: 1,
     borderBottomColor: '#e5e7eb',
+  },
+  tabRow: {
+    flexDirection: 'row',
+    paddingRight: 24,
   },
   tab: {
     paddingVertical: 14,

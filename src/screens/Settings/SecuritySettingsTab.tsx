@@ -1,9 +1,9 @@
 import { ScrollView, StyleSheet } from 'react-native';
 
 import useGetCurrentUserDetails from '../../hooks/useGetCurrentUserDetails';
-import EditProfileCard from './components/EditProfileCard';
+import ChangePhoneCard from './components/ChangePhoneCard';
 
-export default function EditProfileTab() {
+export default function SecuritySettingsTab() {
   const { user, loading } = useGetCurrentUserDetails();
 
   if (loading || !user) {
@@ -16,7 +16,7 @@ export default function EditProfileTab() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <EditProfileCard user={user} />
+      <ChangePhoneCard user={user} />
     </ScrollView>
   );
 }

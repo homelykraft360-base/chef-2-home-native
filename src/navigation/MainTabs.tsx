@@ -10,7 +10,7 @@ import type { MainTabParamList } from './types';
 import BookingScreen from '../screens/BookingScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SettingsScreen from '../screens/Settings';
-import SubscriptionScreen from '../screens/SubscriptionScreen';
+import SubscriptionScreen from '../screens/Subscription';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
 

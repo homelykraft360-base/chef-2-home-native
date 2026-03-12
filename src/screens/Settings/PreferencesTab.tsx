@@ -9,26 +9,19 @@ import {
 import { Button, Card, Switch } from 'react-native-paper';
 
 import { persistPreferenceUpdate } from '../../api/preferenceApi';
-import { persistProfileUpdate } from '../../api/userApi';
-import useGetCurrentUserDetails from '../../hooks/useGetCurrentUserDetails';
 import useGetPreference from '../../hooks/useGetPreference';
-import { CHEF_ORANGE, GRAY_100, GRAY_600 } from '../../constants/theme';
+import { CHEF_ORANGE, GRAY_400, GRAY_600 } from '../../constants/theme';
 
 export default function PreferencesTab() {
-  const { user, loading: userLoading } = useGetCurrentUserDetails();
   const { preference, loading: prefLoading } = useGetPreference();
 
   const [emailNotifications, setEmailNotifications] = useState(false);
-  const [contactPhone, setContactPhone] = useState('');
-  const [state, setState] = useState('');
-  const [city, setCity] = useState('');
-  const [homeAddress, setHomeAddress] = useState('');
   const [allergies, setAllergies] = useState('');
   const [dietaryRestrictions, setDietaryRestrictions] = useState('');
   const [cookingPreferences, setCookingPreferences] = useState('');
+  const [additionalNotes, setAdditionalNotes] = useState('');
 
   const [savingNotification, setSavingNotification] = useState(false);
-  const [savingContact, setSavingContact] = useState(false);
   const [savingBooking, setSavingBooking] = useState(false);
 
   useEffect(() => {
@@ -37,21 +30,9 @@ export default function PreferencesTab() {
       setAllergies(preference.allergies ?? '');
       setDietaryRestrictions(preference.dietaryRestrictions ?? '');
       setCookingPreferences(preference.cookingPreferences ?? '');
+      setAdditionalNotes(preference.additionalNotes ?? '');
     }
   }, [preference]);
-
-  useEffect(() => {
-    if (user?.address) {
-      setContactPhone(user.phoneNumber?.replace(/^\+234\s?/, '') ?? '');
-      setState(user.address.state ?? '');
-      setCity(user.address.city ?? '');
-      const parts = [
-        user.address.streetAddress1,
-        user.address.streetAddress2,
-      ].filter(Boolean);
-      setHomeAddress(parts.length ? parts.join('\n') : '');
-    }
-  }, [user]);
 
   const handleNotificationToggle = async (value: boolean) => {
     setEmailNotifications(value);
@@ -61,29 +42,9 @@ export default function PreferencesTab() {
       allergies,
       cookingPreferences,
       dietaryRestrictions,
-      additionalNotes: preference?.additionalNotes,
+      additionalNotes,
     });
     setSavingNotification(false);
-  };
-
-  const handleSaveContact = async () => {
-    if (!user) return;
-    setSavingContact(true);
-    const lines = homeAddress.split('\n').map((s) => s.trim()).filter(Boolean);
-    const streetAddress1 = lines[0] ?? '';
-    const streetAddress2 = lines.slice(1).join(', ') ?? '';
-    await persistProfileUpdate({
-      firstName: user.firstName,
-      lastName: user.lastName,
-      email: user.email ?? '',
-      address: {
-        streetAddress1,
-        streetAddress2,
-        city: city ?? user.address?.city ?? '',
-        state: state ?? user.address?.state ?? '',
-      },
-    });
-    setSavingContact(false);
   };
 
   const handleSaveBookingPrefs = async () => {
@@ -93,12 +54,12 @@ export default function PreferencesTab() {
       allergies,
       dietaryRestrictions,
       cookingPreferences,
-      additionalNotes: preference?.additionalNotes,
+      additionalNotes,
     });
     setSavingBooking(false);
   };
 
-  if (userLoading || prefLoading) {
+  if (prefLoading) {
     return null;
   }
 
@@ -130,81 +91,7 @@ export default function PreferencesTab() {
         </Card.Content>
       </Card>
 
-      {/* 2. Booking contact information */}
-      <Card style={styles.card}>
-        <Card.Content>
-          <Text style={styles.cardTitle}>Booking contact information</Text>
-          <Text style={styles.intro}>
-            Set the address and phone number for your bookings. If possible,
-            please provide your WhatsApp phone number.
-          </Text>
-          <View style={styles.field}>
-            <Text style={styles.label}>Contact phone number</Text>
-            <View style={styles.phoneRow}>
-              <View style={styles.prefix}>
-                <Text style={styles.prefixText}>+234</Text>
-              </View>
-              <TextInput
-                style={styles.phoneInput}
-                value={contactPhone}
-                onChangeText={(t) =>
-                  setContactPhone(t.replace(/\D/g, '').slice(0, 10))
-                }
-                placeholder="812 345 6789"
-                placeholderTextColor={GRAY_600}
-                keyboardType="phone-pad"
-                editable={!savingContact}
-              />
-            </View>
-          </View>
-          <View style={styles.field}>
-            <Text style={styles.label}>State of residence</Text>
-            <TextInput
-              style={styles.input}
-              value={state}
-              onChangeText={setState}
-              placeholder="e.g. Lagos"
-              placeholderTextColor={GRAY_600}
-              editable={!savingContact}
-            />
-          </View>
-          <View style={styles.field}>
-            <Text style={styles.label}>City</Text>
-            <TextInput
-              style={styles.input}
-              value={city}
-              onChangeText={setCity}
-              placeholder="e.g. Eti-Osa"
-              placeholderTextColor={GRAY_600}
-              editable={!savingContact}
-            />
-          </View>
-          <View style={styles.field}>
-            <Text style={styles.label}>Home address</Text>
-            <TextInput
-              style={[styles.input, styles.textArea]}
-              value={homeAddress}
-              onChangeText={setHomeAddress}
-              placeholder="Street, area, city"
-              placeholderTextColor={GRAY_600}
-              multiline
-              numberOfLines={3}
-              editable={!savingContact}
-            />
-          </View>
-          <Button
-            mode="contained"
-            onPress={handleSaveContact}
-            loading={savingContact}
-            disabled={savingContact}
-            style={styles.saveBtn}
-          >
-            Save changes
-          </Button>
-        </Card.Content>
-      </Card>
-
-      {/* 3. Booking preferences */}
+      {/* 2. Booking preferences */}
       <Card style={styles.card}>
         <Card.Content>
           <Text style={styles.cardTitle}>Booking preferences</Text>
@@ -218,9 +105,10 @@ export default function PreferencesTab() {
               value={allergies}
               onChangeText={setAllergies}
               placeholder="Are there any allergies your chef should keep in mind?"
-              placeholderTextColor={GRAY_600}
+              placeholderTextColor={GRAY_400}
               multiline
               numberOfLines={4}
+              maxLength={300}
               editable={!savingBooking}
             />
           </View>
@@ -231,9 +119,10 @@ export default function PreferencesTab() {
               value={dietaryRestrictions}
               onChangeText={setDietaryRestrictions}
               placeholder="Do you or anyone in your household have special dietary needs?"
-              placeholderTextColor={GRAY_600}
+              placeholderTextColor={GRAY_400}
               multiline
               numberOfLines={4}
+              maxLength={300}
               editable={!savingBooking}
             />
           </View>
@@ -244,9 +133,24 @@ export default function PreferencesTab() {
               value={cookingPreferences}
               onChangeText={setCookingPreferences}
               placeholder="Do you have any cooking preferences?"
-              placeholderTextColor={GRAY_600}
+              placeholderTextColor={GRAY_400}
               multiline
               numberOfLines={4}
+              maxLength={300}
+              editable={!savingBooking}
+            />
+          </View>
+          <View style={styles.field}>
+            <Text style={styles.label}>Additional notes</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              value={additionalNotes}
+              onChangeText={setAdditionalNotes}
+              placeholder="Is there anything else you think we should know?"
+              placeholderTextColor={GRAY_400}
+              multiline
+              numberOfLines={4}
+              maxLength={300}
               editable={!savingBooking}
             />
           </View>
@@ -317,27 +221,6 @@ const styles = StyleSheet.create({
   textArea: {
     minHeight: 88,
     textAlignVertical: 'top',
-  },
-  phoneRow: {
-    flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  prefix: {
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    justifyContent: 'center',
-    backgroundColor: GRAY_100,
-  },
-  prefixText: { fontSize: 16, color: '#101928' },
-  phoneInput: {
-    flex: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#101928',
   },
   saveBtn: {
     backgroundColor: CHEF_ORANGE,
