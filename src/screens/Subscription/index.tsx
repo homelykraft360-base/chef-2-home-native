@@ -62,17 +62,34 @@ export default function SubscriptionScreen() {
   }
 
   const plan = subscription.subscriptionPlan;
-  const visitDays = subscription.visitingDays
-    ? Object.values(subscription.visitingDays).map(capitalizeString).join(', ')
-    : '--';
+  const visitDays = (() => {
+    const vd = subscription.visitingDays;
+    if (!vd) return '--';
+    if (typeof vd === 'string') {
+      try {
+        const o = JSON.parse(vd) as Record<string, string>;
+        return Object.entries(o)
+          .map(([d, t]) => `${capitalizeString(d)} ${t}`)
+          .join(', ');
+      } catch {
+        return vd;
+      }
+    }
+    return Object.entries(vd)
+      .map(([d, t]) => `${capitalizeString(d)} ${t}`)
+      .join(', ');
+  })();
 
   const items: Array<{ label: string; value: string }> = [
     { label: 'Plan', value: capitalizeString(plan.name) },
     { label: 'Start date', value: formatDate(subscription.lastPaid) },
     { label: 'End date', value: formatDate(subscription.expiresAt) },
     {
-      label: 'Frequency',
-      value: `${plan.frequency} times ${plan.interval}`,
+      label: 'Weekly sessions',
+      value:
+        subscription.weeklySessions != null
+          ? `${subscription.weeklySessions} per week`
+          : '--',
     },
     { label: 'Visit days', value: visitDays },
     { label: 'Allergies', value: subscription.allergies || 'None' },

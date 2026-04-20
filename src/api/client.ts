@@ -14,14 +14,36 @@ interface CustomAxiosError extends InternalAxiosRequestConfig {
   _retry?: boolean;
 }
 
-const baseUrl =
-  Constants.expoConfig?.extra?.baseUrl ?? 'http://localhost:8000';
+const baseUrl = (
+  Constants.expoConfig?.extra?.baseUrl ?? 'http://localhost:8000'
+).replace(/\/+$/, '');
 
 const clientApi = axios.create({
   baseURL: `${baseUrl}/api/v1/`,
-  timeout: 10000,
+  /** Render cold starts can exceed 10s; RN often surfaces slow TLS + redirects as ERR_NETWORK. */
+  timeout: 45000,
   withCredentials: false,
 });
+
+function resolvedRequestUrl(config: InternalAxiosRequestConfig): string {
+  try {
+    return clientApi.getUri(config);
+  } catch {
+    const b = (config.baseURL ?? '').replace(/\/+$/, '');
+    const u = (config.url ?? '').replace(/^\/+/, '');
+    return u ? `${b}/${u}` : b;
+  }
+}
+
+/** Chrome “Network” does not show RN Android traffic; log here to see calls in Metro / adb logcat. */
+if (typeof __DEV__ !== 'undefined' && __DEV__) {
+  clientApi.interceptors.request.use((config) => {
+    console.log(
+      `[API] ${String(config.method ?? 'get').toUpperCase()} ${resolvedRequestUrl(config)}`,
+    );
+    return config;
+  });
+}
 
 /** Keep Authorization header in sync with Redux so every request gets the token. */
 function syncAuthHeader() {
@@ -43,9 +65,9 @@ const attemptTokenRefresh = async (
     originalRequest._retry = true;
     try {
       const response = await axios.post(
-        `${baseUrl}/api/v1/auth/refresh/`,
+        `${baseUrl}/api/v1/auth/refresh`,
         {},
-        { baseURL: undefined },
+        { baseURL: undefined, timeout: 45000 },
       );
       const token = response.data?.access_token ?? response.data?.accessToken;
       if (response.status === 200 && token) {
@@ -79,6 +101,16 @@ clientApi.interceptors.response.use(
     return response;
   },
   async (error: AxiosError) => {
+    if (typeof __DEV__ !== 'undefined' && __DEV__) {
+      const cfg = error.config;
+      console.warn(
+        '[API ERR]',
+        error.code ?? 'NO_CODE',
+        error.message,
+        cfg ? resolvedRequestUrl(cfg) : '',
+        error.response ? `HTTP ${error.response.status}` : '',
+      );
+    }
     const originalRequest = error.config as CustomAxiosError;
     const status = error.response?.status;
     if (

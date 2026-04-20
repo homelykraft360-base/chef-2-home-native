@@ -85,6 +85,11 @@ export interface Invoice {
   updatedAt: Date;
 }
 
+/** GET /invoices/history — rows with plan label for payment history UI. */
+export interface InvoiceHistoryItem extends Invoice {
+  planName?: string | null;
+}
+
 export interface Ingredient {
   id: number;
   name: string;
@@ -98,13 +103,15 @@ export interface Ingredient {
   imageUrl?: string;
 }
 
+export type LagosLocation = 'lagos-island' | 'lagos-mainland';
+
 export interface LogisticsProps {
-  frequency: '';
-  selectedDays: Array<string>;
+  location: LagosLocation | '';
+  weeklySessionsCount: number;
+  selectedDays: string[];
   confirmKitchen: boolean;
-  selectedDayAndTime: { [key: string]: string };
+  selectedDayAndTime: Record<string, string>;
   preference?: 'cook-in' | 'delivery';
-  ingredients?: 'exclude' | 'include';
 }
 
 export interface Meal {
@@ -155,11 +162,12 @@ export interface Subscription {
   procureIngredients: boolean;
   delivery: boolean;
   autoRenewal: boolean;
+  weeklySessions?: number;
   subscriptionPlan: SubscriptionPlan;
   allergies?: string;
   cookingPreferences?: string;
   additionalNotes?: string;
-  visitingDays?: string;
+  visitingDays?: Record<string, string> | string;
   paystackSubscriptionCode?: string;
 }
 
@@ -168,24 +176,27 @@ export interface SubscriptionCreationRequest {
   procureIngredients: boolean;
   delivery: boolean;
   autoRenewal: boolean;
-  visitingDays: {
-    [key: string]: string;
-  };
+  weeklySessions: number;
+  visitingDays: Record<string, string>;
   preferences: Omit<PreferenceRequest, 'emailNotifications'>;
+  location?: LagosLocation | '';
 }
 
+export interface SubscriptionPlanMenu {
+  id: number;
+  subscriptionPlanId: number;
+  meals: Meal[];
+}
+
+/** Amount in kobo (API). */
 export interface SubscriptionPlan {
   id: number;
   name: string;
   amount: number;
-  cost: number;
-  duration: number;
-  frequency: number;
-  chefTier: ChefTierType;
   isActive: boolean;
-  interval: string;
-  includes?: string;
+  multiplier: number;
   description?: string;
+  menus?: SubscriptionPlanMenu[];
   colorScheme?: string;
   paystackPlanId?: string;
 }

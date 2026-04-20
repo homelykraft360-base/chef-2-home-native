@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Image,
   ScrollView,
   StyleSheet,
@@ -13,6 +14,7 @@ import { Button, Card, Icon } from 'react-native-paper';
 import { useDispatch, useSelector } from 'react-redux';
 
 import useGetCurrentUserDetails from '../hooks/useGetCurrentUserDetails';
+import useGetInvoiceHistory from '../hooks/useGetInvoiceHistory';
 import useGetSubscription from '../hooks/useGetSubscription';
 import { currentUser, setUser } from '../store/authSlice';
 import { CHEF_GREEN, CHEF_ORANGE, GRAY_100, GRAY_600 } from '../constants/theme';
@@ -25,6 +27,8 @@ import {
   getInitials,
 } from '../utils/string.utils';
 
+import PaymentHistory from './booking/components/PaymentHistory';
+
 export default function HomeScreen() {
   const navigation = useNavigation();
   const dispatch = useDispatch();
@@ -34,10 +38,20 @@ export default function HomeScreen() {
     useGetSubscription();
   const { user, error: userError, loading: userLoading } =
     useGetCurrentUserDetails();
+  const {
+    invoices,
+    loading: invoicesLoading,
+    error: invoicesError,
+  } = useGetInvoiceHistory();
 
   useEffect(() => {
     if (user) dispatch(setUser(user));
   }, [dispatch, user]);
+
+  useEffect(() => {
+    if (!invoicesError) return;
+    Alert.alert('Could not load payment history', invoicesError);
+  }, [invoicesError]);
 
   const goToSubscription = () => {
     (navigation as { navigate: (screen: string) => void }).navigate('Subscription');
@@ -102,6 +116,10 @@ export default function HomeScreen() {
         ) : (
           <SubscriptionCard subscription={subscription} onManage={goToSubscription} />
         )}
+      </View>
+
+      <View style={styles.cardRow}>
+        <PaymentHistory invoices={invoices} loading={invoicesLoading} />
       </View>
 
       {/* User info — 1 column */}
