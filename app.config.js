@@ -25,6 +25,7 @@ export default {
             process.env.EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME ?? 'com.googleusercontent.apps.PLACEHOLDER',
         },
       ],
+      'expo-notifications',
     ],
   },
 };

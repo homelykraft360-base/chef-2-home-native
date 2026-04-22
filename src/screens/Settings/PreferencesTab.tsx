@@ -12,7 +12,11 @@ import { persistPreferenceUpdate } from '../../api/preferenceApi';
 import useGetPreference from '../../hooks/useGetPreference';
 import { CHEF_ORANGE, GRAY_400, GRAY_600 } from '../../constants/theme';
 
-export default function PreferencesTab() {
+interface PreferencesTabProps {
+  onSaved?: () => void;
+}
+
+export default function PreferencesTab({ onSaved }: PreferencesTabProps) {
   const { preference, loading: prefLoading } = useGetPreference();
 
   const [emailNotifications, setEmailNotifications] = useState(false);
@@ -37,7 +41,7 @@ export default function PreferencesTab() {
   const handleNotificationToggle = async (value: boolean) => {
     setEmailNotifications(value);
     setSavingNotification(true);
-    await persistPreferenceUpdate({
+    const { error } = await persistPreferenceUpdate({
       emailNotifications: value,
       allergies,
       cookingPreferences,
@@ -45,11 +49,12 @@ export default function PreferencesTab() {
       additionalNotes,
     });
     setSavingNotification(false);
+    if (!error) onSaved?.();
   };
 
   const handleSaveBookingPrefs = async () => {
     setSavingBooking(true);
-    await persistPreferenceUpdate({
+    const { error } = await persistPreferenceUpdate({
       emailNotifications,
       allergies,
       dietaryRestrictions,
@@ -57,6 +62,7 @@ export default function PreferencesTab() {
       additionalNotes,
     });
     setSavingBooking(false);
+    if (!error) onSaved?.();
   };
 
   if (prefLoading) {

@@ -3,7 +3,13 @@ import { ScrollView, StyleSheet } from 'react-native';
 import useGetCurrentUserDetails from '../../hooks/useGetCurrentUserDetails';
 import ChangePhoneCard from './components/ChangePhoneCard';
 
-export default function SecuritySettingsTab() {
+interface SecuritySettingsTabProps {
+  onSaved?: () => void;
+}
+
+export default function SecuritySettingsTab({
+  onSaved,
+}: SecuritySettingsTabProps) {
   const { user, loading } = useGetCurrentUserDetails();
 
   if (loading || !user) {
@@ -16,7 +22,7 @@ export default function SecuritySettingsTab() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <ChangePhoneCard user={user} />
+      <ChangePhoneCard user={user} onSaved={onSaved} />
     </ScrollView>
   );
 }

@@ -9,9 +9,10 @@ const BASE_PATH = '/meals/';
 export const fetchMeals = async (
   filter: FetchFilters,
   category?: string,
+  weekStart?: string,
 ) => {
   const { data, error } = await tryCatch<{ meals: Meal[] }>(
-    clientApi.get(buildUrl(BASE_PATH, { ...filter, category })),
+    clientApi.get(buildUrl(BASE_PATH, { ...filter, category, weekStart })),
   );
   return {
     meals: data?.meals,

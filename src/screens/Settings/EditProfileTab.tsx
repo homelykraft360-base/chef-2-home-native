@@ -3,7 +3,11 @@ import { ScrollView, StyleSheet } from 'react-native';
 import useGetCurrentUserDetails from '../../hooks/useGetCurrentUserDetails';
 import EditProfileCard from './components/EditProfileCard';
 
-export default function EditProfileTab() {
+interface EditProfileTabProps {
+  onSaved?: () => void;
+}
+
+export default function EditProfileTab({ onSaved }: EditProfileTabProps) {
   const { user, loading } = useGetCurrentUserDetails();
 
   if (loading || !user) {
@@ -16,7 +20,7 @@ export default function EditProfileTab() {
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
     >
-      <EditProfileCard user={user} />
+      <EditProfileCard user={user} onSuccess={onSaved} />
     </ScrollView>
   );
 }

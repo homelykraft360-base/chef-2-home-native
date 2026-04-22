@@ -1,36 +1,55 @@
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { Card } from 'react-native-paper';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { CHEF_GREEN, CHEF_GREY, GRAY_600 } from '../../../constants/theme';
 import type { InvoiceHistoryItem, InvoiceStatus } from '../../../types';
 import { formatDateOrdinal, formatToMoney } from '../../../utils/string.utils';
 
-function statusLabel(status: InvoiceStatus): string {
-  switch (status) {
-    case 'paid':
-      return 'Paid';
-    case 'pending':
-      return 'Pending';
-    case 'failed':
-      return 'Failed';
-    case 'canceled':
-      return 'Canceled';
-    default:
-      return status;
-  }
-}
+type StatusVisual = {
+  name: React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+  bg: string;
+  color: string;
+  label: string;
+};
 
-function statusColors(status: InvoiceStatus): { bg: string; text: string } {
+function statusVisual(status: InvoiceStatus): StatusVisual {
   switch (status) {
     case 'paid':
-      return { bg: '#d1fae5', text: '#065f46' };
+      return {
+        name: 'currency-ngn',
+        bg: '#e8f3d4',
+        color: CHEF_GREEN,
+        label: 'Paid',
+      };
     case 'pending':
-      return { bg: '#fef3c7', text: '#92400e' };
+      return {
+        name: 'clock-outline',
+        bg: '#fef3c7',
+        color: '#b45309',
+        label: 'Pending',
+      };
     case 'failed':
-      return { bg: '#fee2e2', text: '#991b1b' };
+      return {
+        name: 'alert-circle-outline',
+        bg: '#fee2e2',
+        color: '#b91c1c',
+        label: 'Failed',
+      };
     case 'canceled':
-      return { bg: '#e2e8f0', text: '#334155' };
+      return {
+        name: 'close-circle-outline',
+        bg: '#e2e8f0',
+        color: '#475569',
+        label: 'Canceled',
+      };
     default:
-      return { bg: '#e5e7eb', text: '#1f2937' };
+      return {
+        name: 'currency-ngn',
+        bg: '#e5e7eb',
+        color: '#1f2937',
+        label: String(status),
+      };
   }
 }
 
@@ -54,71 +73,70 @@ type Props = {
 export default function PaymentHistory({ loading, invoices }: Props) {
   if (loading) {
     return (
-      <View style={styles.section}>
-        <Text style={styles.title}>Payment history</Text>
-        <View style={styles.loadingBox}>
-          <ActivityIndicator color={CHEF_GREEN} />
-        </View>
-      </View>
+      <Card style={styles.card}>
+        <Card.Content style={styles.cardContent}>
+          <Text style={styles.title}>Payment history</Text>
+          <View style={styles.loadingBox}>
+            <ActivityIndicator color={CHEF_GREEN} />
+          </View>
+        </Card.Content>
+      </Card>
     );
   }
 
   return (
-    <View style={styles.section}>
-      <Text style={styles.title}>Payment history</Text>
+    <Card style={styles.card}>
+      <Card.Content style={styles.cardContent}>
+        <Text style={styles.title}>Payment history</Text>
 
-      {invoices.length === 0 ? (
-        <View style={styles.emptyCard}>
-          <View style={styles.emptyIcon}>
-            <Text style={styles.emptyIconText}>₦</Text>
+        {invoices.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIcon}>
+              <MaterialCommunityIcons
+                name="currency-ngn"
+                size={28}
+                color="#475569"
+              />
+            </View>
+            <Text style={styles.emptyText}>No payment history</Text>
           </View>
-          <Text style={styles.emptyText}>No payment history</Text>
-        </View>
-      ) : (
-        <View style={styles.list}>
-          {invoices.map((item, index) => {
-            const badge = statusColors(item.status);
-            return (
-              <View
-                key={item.id}
-                style={[
-                  styles.row,
-                  index > 0 && styles.rowBorder,
-                ]}
-              >
-                <View style={styles.rowIcon}>
-                  <Text style={styles.rowIconText}>₦</Text>
-                </View>
-                <View style={styles.rowMid}>
-                  <Text style={styles.rowTitle}>{rowTitle(item)}</Text>
-                  <View style={styles.rowMeta}>
-                    <Text style={styles.rowDate}>{rowDate(item)}</Text>
-                    <View style={[styles.badge, { backgroundColor: badge.bg }]}>
-                      <Text style={[styles.badgeText, { color: badge.text }]}>
-                        {statusLabel(item.status)}
-                      </Text>
-                    </View>
+        ) : (
+          <View style={styles.list}>
+            {invoices.map((item, index) => {
+              const v = statusVisual(item.status);
+              return (
+                <View
+                  key={item.id}
+                  style={[styles.row, index > 0 && styles.rowBorder]}
+                  accessibilityLabel={`${rowTitle(item)} — ${v.label}`}
+                >
+                  <View style={[styles.rowIcon, { backgroundColor: v.bg }]}>
+                    <MaterialCommunityIcons
+                      name={v.name}
+                      size={20}
+                      color={v.color}
+                    />
                   </View>
+                  <View style={styles.rowMid}>
+                    <Text style={styles.rowTitle}>{rowTitle(item)}</Text>
+                    <Text style={styles.rowDate}>{rowDate(item)}</Text>
+                  </View>
+                  <Text style={styles.rowAmount}>
+                    {formatToMoney(item.amount / 100, false)}
+                  </Text>
                 </View>
-                <Text style={styles.rowAmount}>
-                  {formatToMoney(item.amount / 100, false)}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      )}
-    </View>
+              );
+            })}
+          </View>
+        )}
+      </Card.Content>
+    </Card>
   );
 }
 
 const styles = StyleSheet.create({
-  section: {
-    backgroundColor: '#f7f7f7',
-    borderRadius: 24,
-    padding: 20,
-    marginBottom: 16,
-  },
+  card: { borderRadius: 24, overflow: 'hidden' },
+  cardContent: { padding: 20 },
   title: {
     fontSize: 18,
     fontWeight: '700',
@@ -131,44 +149,30 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   emptyCard: {
-    backgroundColor: '#fff',
-    borderRadius: 24,
-    paddingVertical: 40,
-    paddingHorizontal: 24,
+    paddingVertical: 24,
+    paddingHorizontal: 12,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2,
   },
   emptyIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: 'rgba(148, 163, 184, 0.35)',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(148, 163, 184, 0.25)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 16,
-  },
-  emptyIconText: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#475569',
+    marginBottom: 12,
   },
   emptyText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
     color: '#64748b',
   },
-  list: {
-    backgroundColor: 'transparent',
-  },
+  list: { backgroundColor: 'transparent' },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    paddingVertical: 16,
+    paddingVertical: 14,
   },
   rowBorder: {
     borderTopWidth: StyleSheet.hairlineWidth,
@@ -178,14 +182,8 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#e8f3d4',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  rowIconText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: CHEF_GREEN,
   },
   rowMid: { flex: 1, minWidth: 0 },
   rowTitle: {
@@ -193,25 +191,7 @@ const styles = StyleSheet.create({
     color: CHEF_GREY,
     fontSize: 15,
   },
-  rowMeta: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 4,
-  },
-  rowDate: { fontSize: 13, color: GRAY_600 },
-  badge: {
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
+  rowDate: { fontSize: 13, color: GRAY_600, marginTop: 2 },
   rowAmount: {
     fontWeight: '600',
     color: CHEF_GREY,

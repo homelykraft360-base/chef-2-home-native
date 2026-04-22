@@ -291,6 +291,61 @@ export interface SubscriptionResponse extends GenericResponse {
   subscription?: Subscription | null;
 }
 
+export type DayOfWeek =
+  | 'sunday'
+  | 'monday'
+  | 'tuesday'
+  | 'wednesday'
+  | 'thursday'
+  | 'friday'
+  | 'saturday';
+
+export type MealSelectionSource = 'user' | 'prior_week' | 'admin_default';
+
+export interface MealPlanDay {
+  id: number;
+  dayOfWeek: DayOfWeek;
+  source: MealSelectionSource;
+  meals: Meal[];
+}
+
+export interface MealPlan {
+  id: number;
+  userId: number;
+  subscriptionId: number;
+  weekStart: string;
+  days: MealPlanDay[];
+}
+
+export interface MealPlanDayInput {
+  dayOfWeek: DayOfWeek;
+  mealIds: number[];
+}
+
+export interface MealPlanCreateRequest {
+  weekStart: string;
+  days: MealPlanDayInput[];
+}
+
+export interface MealPlanUpdateRequest {
+  days: MealPlanDayInput[];
+}
+
+export interface MealPlanResponse extends GenericResponse {
+  mealPlan?: MealPlan | null;
+}
+
+export interface MealPlansResponse extends GenericResponse {
+  mealPlans: MealPlan[];
+}
+
+export type DevicePlatform = 'ios' | 'android' | 'web';
+
+export interface PushTokenRegisterRequest {
+  expoPushToken: string;
+  platform: DevicePlatform;
+}
+
 export interface SubscriptionPlanResponse extends GenericResponse {
   subscriptionPlan: SubscriptionPlan | null;
 }

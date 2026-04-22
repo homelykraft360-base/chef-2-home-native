@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   ScrollView,
@@ -7,7 +7,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { Icon } from 'react-native-paper';
+import { Icon, Snackbar } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
 
 import { signOut } from '../../api/authApi';
@@ -25,6 +25,11 @@ export default function SettingsScreen() {
   const dispatch = useDispatch();
   const { user, loading } = useGetCurrentUserDetails();
   const [tab, setTab] = useState<TabId>('edit');
+  const [snackbarVisible, setSnackbarVisible] = useState(false);
+
+  const notifySaved = useCallback(() => {
+    setSnackbarVisible(true);
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();
@@ -94,9 +99,11 @@ export default function SettingsScreen() {
         </ScrollView>
       </View>
       <View style={styles.tabContent}>
-        {tab === 'edit' && user ? <EditProfileTab /> : null}
-        {tab === 'preferences' ? <PreferencesTab /> : null}
-        {tab === 'security' && user ? <SecuritySettingsTab /> : null}
+        {tab === 'edit' && user ? <EditProfileTab onSaved={notifySaved} /> : null}
+        {tab === 'preferences' ? <PreferencesTab onSaved={notifySaved} /> : null}
+        {tab === 'security' && user ? (
+          <SecuritySettingsTab onSaved={notifySaved} />
+        ) : null}
       </View>
       <TouchableOpacity
         style={styles.signOutFab}
@@ -107,6 +114,14 @@ export default function SettingsScreen() {
       >
         <Icon source="power" size={22} color={CHEF_ORANGE} />
       </TouchableOpacity>
+      <Snackbar
+        visible={snackbarVisible}
+        onDismiss={() => setSnackbarVisible(false)}
+        duration={2500}
+        style={styles.snackbar}
+      >
+        Settings updated
+      </Snackbar>
     </View>
   );
 }
@@ -168,5 +183,11 @@ const styles = StyleSheet.create({
     elevation: 3,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  snackbar: {
+    marginBottom: 24,
+    marginHorizontal: 24,
+    borderRadius: 12,
+    backgroundColor: '#101928',
   },
 });

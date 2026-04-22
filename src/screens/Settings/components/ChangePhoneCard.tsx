@@ -7,9 +7,10 @@ import type { User } from '../../../types';
 
 interface ChangePhoneCardProps {
   user: User;
+  onSaved?: () => void;
 }
 
-export default function ChangePhoneCard({ user }: ChangePhoneCardProps) {
+export default function ChangePhoneCard({ user, onSaved }: ChangePhoneCardProps) {
   const [phone, setPhone] = useState(
     user.phoneNumber?.replace(/^\+234\s?/, '') ?? '',
   );
@@ -20,6 +21,7 @@ export default function ChangePhoneCard({ user }: ChangePhoneCardProps) {
     // TODO: wire to change-phone + OTP flow when API is available
     await new Promise((r) => setTimeout(r, 600));
     setLoading(false);
+    onSaved?.();
   };
 
   return (

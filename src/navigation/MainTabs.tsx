@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
+import useRegisterPushOnLogin from '../notifications/useRegisterPushOnLogin';
 import HomeScreen from '../screens/HomeScreen';
 import MealsScreen from '../screens/MealsScreen';
 import SettingsScreen from '../screens/Settings';
@@ -36,6 +37,8 @@ export default function MainTabs() {
   const tab = useSelector((state: RootState) => state.auth.postLoginTab);
   const navigation = useNavigation();
   const dispatch = useDispatch();
+
+  useRegisterPushOnLogin();
 
   useEffect(() => {
     if (tab !== 'Booking') return;
