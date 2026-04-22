@@ -1,11 +1,14 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSelector } from 'react-redux';
 
+import BookingScreen from '../screens/BookingScreen';
 import { isAuthenticated } from '../store/authSlice';
 import AuthStack from './AuthStack';
+import { StackScreenHeader } from './appHeader';
 import MainTabs from './MainTabs';
+import type { RootStackParamList } from './types';
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export default function RootNavigator() {
   const authenticated = useSelector(isAuthenticated);
@@ -13,7 +16,18 @@ export default function RootNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {authenticated ? (
-        <Stack.Screen name="Main" component={MainTabs} />
+        <>
+          <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen
+            name="Booking"
+            component={BookingScreen}
+            options={{
+              headerShown: true,
+              title: 'Subscribe',
+              header: (props) => <StackScreenHeader {...props} />,
+            }}
+          />
+        </>
       ) : (
         <Stack.Screen name="Auth" component={AuthStack} />
       )}

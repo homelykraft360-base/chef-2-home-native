@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Button } from 'react-native-paper';
-import { useNavigation } from '@react-navigation/native';
+import { CommonActions, useNavigation } from '@react-navigation/native';
 import { usePaystack } from 'react-native-paystack-webview';
 
 import {
@@ -309,7 +309,12 @@ export default function BookingScreen() {
             setSelectedPlan(undefined);
             setLogistics(initialLogistics);
             setPreferences(initialPreference);
-            navigation.navigate('Home' as never);
+            navigation.dispatch(
+              CommonActions.navigate({
+                name: 'Main',
+                params: { screen: 'Home' },
+              }),
+            );
           }}
           style={styles.successBtn}
         >

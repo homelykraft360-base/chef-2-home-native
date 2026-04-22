@@ -12,12 +12,19 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Button, Card, Icon } from 'react-native-paper';
 import { useDispatch, useSelector } from 'react-redux';
+import dayjs from 'dayjs';
 
 import useGetCurrentUserDetails from '../hooks/useGetCurrentUserDetails';
 import useGetInvoiceHistory from '../hooks/useGetInvoiceHistory';
 import useGetSubscription from '../hooks/useGetSubscription';
 import { currentUser, setUser } from '../store/authSlice';
-import { CHEF_GREEN, CHEF_ORANGE, GRAY_100, GRAY_600 } from '../constants/theme';
+import {
+  CHEF_GREEN,
+  CHEF_ORANGE,
+  ERROR_RED,
+  GRAY_100,
+  GRAY_600,
+} from '../constants/theme';
 import type { Subscription, User } from '../types';
 import {
   formatAddress,
@@ -57,7 +64,12 @@ export default function HomeScreen() {
     (navigation as { navigate: (screen: string) => void }).navigate('Subscription');
   };
   const goToBooking = () => {
-    (navigation as { navigate: (screen: string) => void }).navigate('Booking');
+    const parent = navigation.getParent();
+    if (parent) {
+      (parent as { navigate: (name: string) => void }).navigate('Booking');
+    } else {
+      (navigation as { navigate: (screen: string) => void }).navigate('Booking');
+    }
   };
   const goToSettings = () => {
     (navigation as { navigate: (screen: string) => void }).navigate('Settings');
@@ -156,6 +168,8 @@ function SubscriptionCard({
   onManage: () => void;
 }) {
   const plan = subscription.subscriptionPlan;
+  const subscriptionExpired = dayjs().isAfter(dayjs(subscription.expiresAt));
+
   return (
     <Card style={[styles.card, styles.subscriptionCard]}>
       <Card.Content style={styles.subscriptionInner}>
@@ -174,17 +188,30 @@ function SubscriptionCard({
             <Text style={styles.dateValue}>{formatDate(subscription.expiresAt)}</Text>
           </View>
         </View>
-        <Text style={styles.autoRenew}>
-          {subscription.autoRenewal
-            ? 'Renews automatically'
-            : "Doesn't renew automatically"}
+        <Text
+          style={[
+            styles.autoRenew,
+            subscriptionExpired && styles.autoRenewExpired,
+          ]}
+        >
+          {subscriptionExpired
+            ? 'Subscription expired'
+            : subscription.autoRenewal
+              ? 'Renews automatically'
+              : "Doesn't renew automatically"}
         </Text>
       </Card.Content>
-      <Card.Actions style={styles.cardActions}>
-        <Button mode="contained" onPress={onManage} style={styles.btn}>
+      <View style={styles.subscriptionActions}>
+        <Button
+          mode="contained"
+          compact={false}
+          onPress={onManage}
+          style={[styles.btn, styles.subscriptionManageBtn]}
+          contentStyle={styles.subscriptionManageBtnContent}
+        >
           Manage subscription
         </Button>
-      </Card.Actions>
+      </View>
     </Card>
   );
 }
@@ -300,8 +327,29 @@ const styles = StyleSheet.create({
   dateBlock: {},
   dateLabel: { fontSize: 12, color: GRAY_600 },
   dateValue: { fontSize: 14, fontWeight: '600' },
-  autoRenew: { fontSize: 12, color: GRAY_600, marginTop: 8 },
-  cardActions: { paddingHorizontal: 16, paddingBottom: 16 },
+  autoRenew: { fontSize: 12, color: GRAY_600, marginBottom: 6, marginTop: 8 },
+  autoRenewExpired: { color: ERROR_RED, fontWeight: '700', marginBottom: 6 },
+  /** Plain View (not Card.Actions): Paper injects padding:8 + MD3 margin on buttons. */
+  subscriptionActions: {
+    width: '100%',
+    padding: 0,
+    margin: 0,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    alignSelf: 'stretch',
+  },
+  subscriptionManageBtn: {
+    width: '100%',
+    alignSelf: 'stretch',
+    margin: 0,
+    borderRadius: 0,
+  },
+  subscriptionManageBtnContent: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+  },
   overlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.3)',
