@@ -2,6 +2,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSelector } from 'react-redux';
 
 import BookingScreen from '../screens/BookingScreen';
+import IngredientCheckoutScreen from '../screens/IngredientCheckoutScreen';
+import IngredientReceiptScreen from '../screens/IngredientReceiptScreen';
 import { isAuthenticated } from '../store/authSlice';
 import AuthStack from './AuthStack';
 import { StackScreenHeader } from './appHeader';
@@ -24,6 +26,24 @@ export default function RootNavigator() {
             options={{
               headerShown: true,
               title: 'Subscribe',
+              header: (props) => <StackScreenHeader {...props} />,
+            }}
+          />
+          <Stack.Screen
+            name="IngredientCheckout"
+            component={IngredientCheckoutScreen}
+            options={{
+              headerShown: true,
+              title: 'Ingredients',
+              header: (props) => <StackScreenHeader {...props} />,
+            }}
+          />
+          <Stack.Screen
+            name="IngredientReceipt"
+            component={IngredientReceiptScreen}
+            options={{
+              headerShown: true,
+              title: 'Receipt',
               header: (props) => <StackScreenHeader {...props} />,
             }}
           />

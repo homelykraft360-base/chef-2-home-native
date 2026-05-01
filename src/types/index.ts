@@ -80,6 +80,7 @@ export interface Invoice {
   channel?: string;
   amount: number;
   status: InvoiceStatus;
+  metaData?: Record<string, unknown> | null;
   paidAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -95,6 +96,7 @@ export interface Ingredient {
   name: string;
   unit: string;
   unitLabel: string;
+  /** Stored in kobo (smallest currency unit). Divide by 100 before displaying as naira. */
   cost: string;
   description: string;
   quantity: number;
@@ -352,4 +354,81 @@ export interface SubscriptionPlanResponse extends GenericResponse {
 
 export interface SubscriptionPlansResponse extends GenericResponse {
   subscriptionPlans: SubscriptionPlan[];
+}
+
+// ===== Weekly Ingredient Payment =====
+export type ExclusionReason = 'have' | 'self_source';
+export type IngredientPaymentStatus = 'unpaid' | 'pending' | 'paid';
+
+export interface MealPlanIngredientRow {
+  ingredientId: number;
+  name: string;
+  unit?: string | null;
+  quantity: number;
+  unitCostKobo: number;
+  lineTotalKobo: number;
+  isExcluded: boolean;
+  exclusionReason?: ExclusionReason | null;
+  imageUrl?: string | null;
+}
+
+export interface MealPlanMealRow {
+  mealPlanDayId: number;
+  mealId: number;
+  dayOfWeek: DayOfWeek;
+  mealName: string;
+  mealImageUrl?: string | null;
+  ingredients: MealPlanIngredientRow[];
+  mealSubtotalKobo: number;
+}
+
+export interface MealPlanIngredientBreakdown {
+  mealPlanId: number;
+  weekStart: string;
+  cutoffPassed: boolean;
+  meals: MealPlanMealRow[];
+  grossTotalKobo: number;
+  excludedTotalKobo: number;
+  payableTotalKobo: number;
+  paymentStatus: IngredientPaymentStatus;
+  invoiceId?: number | null;
+}
+
+export interface IngredientExclusionInput {
+  mealPlanDayId: number;
+  mealId: number;
+  ingredientId: number;
+  reason: ExclusionReason;
+}
+
+export interface IngredientCheckoutResponse {
+  authorizationUrl?: string | null;
+  accessCode?: string | null;
+  reference: string;
+  invoiceId: number;
+  amount: number;
+}
+
+export interface InvoiceIngredientLine {
+  id: number;
+  mealId: number;
+  mealName: string;
+  dayOfWeek: DayOfWeek;
+  ingredientId: number;
+  ingredientName: string;
+  unit?: string | null;
+  quantity: number;
+  unitCostKobo: number;
+  lineTotalKobo: number;
+  wasExcluded: boolean;
+  exclusionReason?: ExclusionReason | null;
+}
+
+export interface InvoiceIngredientBreakdown {
+  invoiceId: number;
+  weekStart?: string | null;
+  mealPlanId?: number | null;
+  paidAt?: string | null;
+  amount: number;
+  lines: InvoiceIngredientLine[];
 }

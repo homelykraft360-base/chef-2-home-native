@@ -42,6 +42,7 @@ import type {
   Subscription,
 } from '../types';
 import {
+  addWeeks,
   currentWeekStart,
   isCutoffPassed,
   weekOptionsForSubscription,
@@ -223,6 +224,13 @@ export default function MealsScreen() {
       isCutoffPassed(weekStart, day, timeOfDay),
     [],
   );
+
+  // Ingredient checkout is only meaningful for the current week or the next.
+  const payableWeeks = useMemo(() => {
+    const cur = currentWeekStart();
+    return new Set([cur, addWeeks(cur, 1)]);
+  }, []);
+  const canReviewSelectedWeek = payableWeeks.has(selectedWeek);
 
   const toggleMeal = useCallback((day: DayOfWeek, mealId: number) => {
     setSelections((prev) => {
@@ -434,7 +442,12 @@ export default function MealsScreen() {
               <TouchableOpacity
                 key={w}
                 onPress={() => setSelectedWeek(w)}
-                style={[styles.weekChip, selected && styles.weekChipSelected]}
+                disabled={savingAny}
+                style={[
+                  styles.weekChip,
+                  selected && styles.weekChipSelected,
+                  savingAny && styles.chipDisabled,
+                ]}
               >
                 <Text
                   style={[
@@ -458,7 +471,12 @@ export default function MealsScreen() {
               <TouchableOpacity
                 key={day}
                 onPress={() => setActiveDay(day)}
-                style={[styles.dayChip, selected && styles.dayChipSelected]}
+                disabled={savingAny}
+                style={[
+                  styles.dayChip,
+                  selected && styles.dayChipSelected,
+                  savingAny && styles.chipDisabled,
+                ]}
               >
                 <Text
                   style={[
@@ -521,7 +539,8 @@ export default function MealsScreen() {
             renderItem={({ item }) => {
               const isSelected = activeSelection.has(item.id);
               const capReached = activeSelection.size >= MAX_PER_DAY;
-              const isDisabled = activeLocked || (!isSelected && capReached);
+              const isDisabled =
+                activeLocked || (!isSelected && capReached) || savingAny;
               return (
                 <TouchableOpacity
                   style={[
@@ -585,19 +604,37 @@ export default function MealsScreen() {
       )}
 
       <View style={styles.footer}>
-        <Button
-          mode="contained"
-          onPress={onConfirm}
-          loading={savingAny}
-          disabled={savingAny}
-          style={styles.primaryBtn}
-        >
-          {applyToAll
-            ? `Save to all ${weekOptions.length} weeks`
-            : mealPlan
-              ? 'Save changes'
-              : 'Confirm selections'}
-        </Button>
+        <View style={styles.footerRow}>
+          <Button
+            mode="contained"
+            onPress={onConfirm}
+            loading={savingAny}
+            disabled={savingAny}
+            style={[styles.primaryBtn, styles.footerBtn]}
+          >
+            Save
+          </Button>
+          {mealPlan?.id && canReviewSelectedWeek ? (
+            <Button
+              mode="outlined"
+              textColor={CHEF_ORANGE}
+              disabled={savingAny}
+              onPress={() =>
+                (
+                  navigation as unknown as {
+                    navigate: (
+                      name: 'IngredientCheckout',
+                      params: { mealPlanId: number },
+                    ) => void;
+                  }
+                ).navigate('IngredientCheckout', { mealPlanId: mealPlan.id })
+              }
+              style={[styles.outlinedBtn, styles.footerBtn]}
+            >
+              Review
+            </Button>
+          ) : null}
+        </View>
       </View>
     </View>
   );
@@ -749,6 +786,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   primaryBtn: { backgroundColor: CHEF_ORANGE, borderRadius: 12 },
+  outlinedBtn: { borderRadius: 12, borderColor: CHEF_ORANGE },
+  footerRow: { flexDirection: 'row', gap: 8 },
+  footerBtn: { flex: 1 },
+  chipDisabled: { opacity: 0.45 },
   errorText: { color: ERROR_RED, textAlign: 'center' },
   mutedText: { color: GRAY_600 },
   gateImage: { height: 120, marginBottom: 16 },

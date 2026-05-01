@@ -1,5 +1,12 @@
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { Card } from 'react-native-paper';
+import { useNavigation } from '@react-navigation/native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import { CHEF_GREEN, CHEF_GREY, GRAY_600 } from '../../../constants/theme';
@@ -53,7 +60,17 @@ function statusVisual(status: InvoiceStatus): StatusVisual {
   }
 }
 
+function isWeeklyIngredientInvoice(item: InvoiceHistoryItem): boolean {
+  return item.metaData?.kind === 'weekly_ingredients';
+}
+
 function rowTitle(item: InvoiceHistoryItem) {
+  if (isWeeklyIngredientInvoice(item)) {
+    const week = item.metaData?.week_start;
+    return week
+      ? `Weekly ingredients · ${week}`
+      : 'Weekly ingredients';
+  }
   if (item.planName?.trim()) {
     return `${item.planName.trim()} plan subscription`;
   }
@@ -71,6 +88,7 @@ type Props = {
 };
 
 export default function PaymentHistory({ loading, invoices }: Props) {
+  const navigation = useNavigation();
   if (loading) {
     return (
       <Card style={styles.card}>
@@ -104,11 +122,28 @@ export default function PaymentHistory({ loading, invoices }: Props) {
           <View style={styles.list}>
             {invoices.map((item, index) => {
               const v = statusVisual(item.status);
+              const ingredientReceipt =
+                isWeeklyIngredientInvoice(item) && item.status === 'paid';
+              const RowWrapper: typeof TouchableOpacity | typeof View =
+                ingredientReceipt ? TouchableOpacity : View;
               return (
-                <View
+                <RowWrapper
                   key={item.id}
                   style={[styles.row, index > 0 && styles.rowBorder]}
                   accessibilityLabel={`${rowTitle(item)} — ${v.label}`}
+                  onPress={
+                    ingredientReceipt
+                      ? () =>
+                          (
+                            navigation as unknown as {
+                              navigate: (
+                                name: 'IngredientReceipt',
+                                params: { invoiceId: number },
+                              ) => void;
+                            }
+                          ).navigate('IngredientReceipt', { invoiceId: item.id })
+                      : undefined
+                  }
                 >
                   <View style={[styles.rowIcon, { backgroundColor: v.bg }]}>
                     <MaterialCommunityIcons
@@ -124,7 +159,7 @@ export default function PaymentHistory({ loading, invoices }: Props) {
                   <Text style={styles.rowAmount}>
                     {formatToMoney(item.amount / 100, false)}
                   </Text>
-                </View>
+                </RowWrapper>
               );
             })}
           </View>

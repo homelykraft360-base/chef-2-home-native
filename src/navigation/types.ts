@@ -26,6 +26,8 @@ export type RootStackParamList = {
   Auth: undefined;
   Main: undefined;
   Booking: undefined;
+  IngredientCheckout: { mealPlanId: number };
+  IngredientReceipt: { invoiceId: number };
 };
 
 export type AuthStackScreenProps<T extends keyof AuthStackParamList> =
