@@ -317,6 +317,8 @@ export interface MealPlan {
   subscriptionId: number;
   weekStart: string;
   days: MealPlanDay[];
+  /** From list/get meal plan API; used to surface ingredient checkout for past unpaid weeks. */
+  ingredientPaymentStatus?: IngredientPaymentStatus;
 }
 
 export interface MealPlanDayInput {

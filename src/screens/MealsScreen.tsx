@@ -231,6 +231,24 @@ export default function MealsScreen() {
     return new Set([cur, addWeeks(cur, 1)]);
   }, []);
   const canReviewSelectedWeek = payableWeeks.has(selectedWeek);
+  const mealPlanIdForReview = mealPlan?.id;
+  /** Past weeks: still show Review when weekly ingredients were never paid. */
+  const unpaidPastIngredientWeek =
+    mealPlanIdForReview != null &&
+    mealPlan?.ingredientPaymentStatus === 'unpaid' &&
+    selectedWeek < currentWeekStart();
+  const canOpenIngredientCheckout =
+    mealPlanIdForReview != null &&
+    (canReviewSelectedWeek || unpaidPastIngredientWeek);
+
+  const ingredientsPaidForWeek =
+    mealPlan?.ingredientPaymentStatus === 'paid';
+
+  useEffect(() => {
+    if (mealPlan?.ingredientPaymentStatus === 'paid' && applyToAll) {
+      setApplyToAll(false);
+    }
+  }, [mealPlan?.ingredientPaymentStatus, mealPlan?.weekStart, applyToAll]);
 
   const toggleMeal = useCallback((day: DayOfWeek, mealId: number) => {
     setSelections((prev) => {
@@ -258,6 +276,7 @@ export default function MealsScreen() {
   );
 
   const saveSingleWeek = () => {
+    if (ingredientsPaidForWeek) return;
     const payloadDays = buildPayloadForWeek(selectedWeek);
     if (payloadDays.length === 0) {
       Alert.alert(
@@ -286,6 +305,7 @@ export default function MealsScreen() {
 
   const saveAllWeeks = async () => {
     if (weekOptions.length === 0) return;
+    if (ingredientsPaidForWeek) return;
     setBulkSaving(true);
     try {
       const first = weekOptions[0];
@@ -407,11 +427,9 @@ export default function MealsScreen() {
   const loadError = mealsError ?? planError;
   const activeDayInfo = visitingDays.find((d) => d.day === activeDay) ?? visitingDays[0];
   const activeSelection = selections[activeDayInfo.day] ?? new Set<number>();
-  const activeLocked = dayLocked(
-    selectedWeek,
-    activeDayInfo.day,
-    activeDayInfo.timeOfDay,
-  );
+  const activeLocked =
+    dayLocked(selectedWeek, activeDayInfo.day, activeDayInfo.timeOfDay) ||
+    ingredientsPaidForWeek;
   const activePlanDay = planDayMap.get(activeDayInfo.day);
   const activeSourceLabel = activePlanDay && SOURCE_LABEL[activePlanDay.source];
   const savingAny = saving || bulkSaving;
@@ -426,6 +444,7 @@ export default function MealsScreen() {
             <Switch
               value={applyToAll}
               onValueChange={setApplyToAll}
+              disabled={ingredientsPaidForWeek || savingAny}
               trackColor={{ false: '#d1d5db', true: CHEF_ORANGE }}
               thumbColor="#fff"
             />
@@ -464,7 +483,8 @@ export default function MealsScreen() {
 
         <View style={styles.dayStrip}>
           {visitingDays.map(({ day, timeOfDay }) => {
-            const locked = dayLocked(selectedWeek, day, timeOfDay);
+            const locked =
+              dayLocked(selectedWeek, day, timeOfDay) || ingredientsPaidForWeek;
             const count = selections[day]?.size ?? 0;
             const selected = activeDay === day;
             return (
@@ -503,7 +523,9 @@ export default function MealsScreen() {
           <Text style={styles.activeDayTitle}>
             {capitalizeString(activeDayInfo.day)} · {capitalizeString(activeDayInfo.timeOfDay)}
           </Text>
-          {activeLocked ? (
+          {ingredientsPaidForWeek ? (
+            <Text style={styles.lockedTag}>Ingredients paid — selections locked</Text>
+          ) : activeLocked ? (
             <Text style={styles.lockedTag}>Cutoff passed — locked</Text>
           ) : (
             <Text style={styles.counter}>
@@ -603,39 +625,45 @@ export default function MealsScreen() {
         </View>
       )}
 
-      <View style={styles.footer}>
-        <View style={styles.footerRow}>
-          <Button
-            mode="contained"
-            onPress={onConfirm}
-            loading={savingAny}
-            disabled={savingAny}
-            style={[styles.primaryBtn, styles.footerBtn]}
-          >
-            Save
-          </Button>
-          {mealPlan?.id && canReviewSelectedWeek ? (
-            <Button
-              mode="outlined"
-              textColor={CHEF_ORANGE}
-              disabled={savingAny}
-              onPress={() =>
-                (
-                  navigation as unknown as {
-                    navigate: (
-                      name: 'IngredientCheckout',
-                      params: { mealPlanId: number },
-                    ) => void;
-                  }
-                ).navigate('IngredientCheckout', { mealPlanId: mealPlan.id })
-              }
-              style={[styles.outlinedBtn, styles.footerBtn]}
-            >
-              Review
-            </Button>
-          ) : null}
+      {!ingredientsPaidForWeek || canOpenIngredientCheckout ? (
+        <View style={styles.footer}>
+          <View style={styles.footerRow}>
+            {!ingredientsPaidForWeek ? (
+              <Button
+                mode="contained"
+                onPress={onConfirm}
+                loading={savingAny}
+                disabled={savingAny}
+                style={[styles.primaryBtn, styles.footerBtn]}
+              >
+                Save
+              </Button>
+            ) : null}
+            {canOpenIngredientCheckout ? (
+              <Button
+                mode="outlined"
+                textColor={CHEF_ORANGE}
+                disabled={savingAny}
+                onPress={() =>
+                  (
+                    navigation as unknown as {
+                      navigate: (
+                        name: 'IngredientCheckout',
+                        params: { mealPlanId: number },
+                      ) => void;
+                    }
+                  ).navigate('IngredientCheckout', {
+                    mealPlanId: mealPlanIdForReview,
+                  })
+                }
+                style={[styles.outlinedBtn, styles.footerBtn]}
+              >
+                Review
+              </Button>
+            ) : null}
+          </View>
         </View>
-      </View>
+      ) : null}
     </View>
   );
 }

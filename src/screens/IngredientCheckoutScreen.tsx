@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -13,6 +13,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { usePaystack } from 'react-native-paystack-webview';
 
+import PaystackResumeTransactionModal from '../components/PaystackResumeTransactionModal';
 import {
   CHEF_GREEN,
   CHEF_GREY,
@@ -147,6 +148,7 @@ export default function IngredientCheckoutScreen() {
   const route = useRoute<RouteProp<IngredientCheckoutRouteParams, 'IngredientCheckout'>>();
   const { mealPlanId } = route.params ?? { mealPlanId: 0 };
   const { popup } = usePaystack();
+  const [paystackResumeCode, setPaystackResumeCode] = useState<string | null>(null);
   const { user } = useGetCurrentUserDetails();
   const {
     breakdown,
@@ -161,16 +163,32 @@ export default function IngredientCheckoutScreen() {
   const disabled = useMemo(
     () =>
       !breakdown ||
-      breakdown.cutoffPassed ||
       breakdown.paymentStatus !== 'unpaid' ||
       paying,
     [breakdown, paying],
   );
 
+  const closePaystackResume = useCallback(() => {
+    setPaystackResumeCode(null);
+  }, []);
+
   const handlePay = useCallback(async () => {
     if (!user?.email || !breakdown) return;
     const checkoutResp = await checkout();
     if (!checkoutResp) return;
+
+    // Backend already called Paystack `transaction/initialize`; the inline SDK
+    // must resume with `access_code`. A fresh `checkout()` would conflict with
+    // the server-created reference and the WebView often stays blank.
+    const accessCode =
+      typeof checkoutResp.accessCode === 'string'
+        ? checkoutResp.accessCode.trim()
+        : '';
+    if (accessCode) {
+      setPaystackResumeCode(accessCode);
+      return;
+    }
+
     popup.checkout({
       email: user.email,
       amount: checkoutResp.amount / 100,
@@ -219,18 +237,49 @@ export default function IngredientCheckoutScreen() {
 
   return (
     <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll}>
+      {paystackResumeCode ? (
+        <PaystackResumeTransactionModal
+          visible
+          accessCode={paystackResumeCode}
+          onMessageSuccess={() => {
+            closePaystackResume();
+            Alert.alert('Payment', 'Ingredient payment successful.');
+            refetch();
+            navigation.goBack();
+          }}
+          onMessageCancel={closePaystackResume}
+          onMessageError={(message) => {
+            closePaystackResume();
+            Alert.alert('Payment', message);
+          }}
+          onRequestClose={closePaystackResume}
+        />
+      ) : null}
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          breakdown.paymentStatus === 'paid' && styles.scrollPaidNoFooter,
+        ]}
+      >
         <Text style={styles.weekHeading}>
           Week of {weekRangeLabel(breakdown.weekStart)}
         </Text>
-        <Text style={styles.disclaimerBanner}>
-          Tick the checkbox next to any ingredient you already have to exclude
-          it. We'll only charge you for what we'll buy.
-        </Text>
+        {breakdown.paymentStatus !== 'paid' && !breakdown.cutoffPassed ? (
+          <Text style={styles.disclaimerBanner}>
+            Tick the checkbox next to any ingredient you already have to exclude
+            it. We'll only charge you for what we'll buy.
+          </Text>
+        ) : null}
         {error && <Text style={styles.errorBanner}>{error}</Text>}
-        {breakdown.cutoffPassed && (
+        {breakdown.cutoffPassed && breakdown.paymentStatus !== 'unpaid' && (
           <Text style={styles.lockedBanner}>
             Cutoff has passed — ingredients are locked for this week.
+          </Text>
+        )}
+        {breakdown.cutoffPassed && breakdown.paymentStatus === 'unpaid' && (
+          <Text style={styles.lockedBanner}>
+            This week has started, but you can still complete your ingredient
+            payment below.
           </Text>
         )}
         {breakdown.paymentStatus === 'paid' && (
@@ -265,7 +314,9 @@ export default function IngredientCheckoutScreen() {
             </Text>
           </View>
           <View style={[styles.totalRow, styles.payableRow]}>
-            <Text style={styles.payableLabel}>Payable</Text>
+            <Text style={styles.payableLabel}>
+              {breakdown.paymentStatus === 'paid' ? 'Paid' : 'Payable'}
+            </Text>
             <Text style={styles.payableValue}>
               {formatToMoney((breakdown.payableTotalKobo / 100).toFixed(2))}
             </Text>
@@ -273,23 +324,25 @@ export default function IngredientCheckoutScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
-        <Button
-          mode="contained"
-          buttonColor={CHEF_ORANGE}
-          textColor="#fff"
-          loading={paying}
-          disabled={
-            disabled ||
-            breakdown.payableTotalKobo <= 0 ||
-            !user?.email
-          }
-          onPress={handlePay}
-          style={styles.payButton}
-        >
-          Pay {formatToMoney((breakdown.payableTotalKobo / 100).toFixed(2))}
-        </Button>
-      </View>
+      {breakdown.paymentStatus !== 'paid' ? (
+        <View style={styles.footer}>
+          <Button
+            mode="contained"
+            buttonColor={CHEF_ORANGE}
+            textColor="#fff"
+            loading={paying}
+            disabled={
+              disabled ||
+              breakdown.payableTotalKobo <= 0 ||
+              !user?.email
+            }
+            onPress={handlePay}
+            style={styles.payButton}
+          >
+            Pay {formatToMoney((breakdown.payableTotalKobo / 100).toFixed(2))}
+          </Button>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -297,6 +350,7 @@ export default function IngredientCheckoutScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   scroll: { padding: 16, paddingBottom: 120 },
+  scrollPaidNoFooter: { paddingBottom: 24 },
   loading: {
     flex: 1,
     alignItems: 'center',
