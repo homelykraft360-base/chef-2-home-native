@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "chef-2-home-mobile",
-    "slug": "chef-2-home-mobile",
+    "name": "Chef2Home",
+    "slug": "chef-2-home",
     "version": "1.0.0",
+    "scheme": "chef2home",
     "orientation": "portrait",
     "icon": "./assets/chef2home_logo.png",
     "userInterfaceStyle": "light",

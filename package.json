@@ -7,7 +7,14 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "ios:debug": "expo run:ios --configuration Debug",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "prebuild": "expo prebuild",
+    "build:android:apk": "eas build --platform android --profile preview",
+    "build:android:aab": "eas build --platform android --profile production",
+    "build:ios": "eas build --platform ios --profile production",
+    "build:all": "eas build --platform all --profile production",
+    "submit:ios": "eas submit --platform ios --latest",
+    "submit:android": "eas submit --platform android --latest"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -38,6 +45,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "eas-cli": "^16.28.0",
     "typescript": "~5.9.2"
   },
   "private": true
