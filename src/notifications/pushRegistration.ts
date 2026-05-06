@@ -1,7 +1,9 @@
+import messaging, {
+  AuthorizationStatus,
+} from '@react-native-firebase/messaging';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
-import Constants from 'expo-constants';
 
 import { registerPushToken } from '../api/userApi';
 import type { DevicePlatform } from '../types';
@@ -15,26 +17,34 @@ Notifications.setNotificationHandler({
   }),
 });
 
-function platformTag(): DevicePlatform {
+export function platformTag(): DevicePlatform {
   if (Platform.OS === 'ios') return 'ios';
   if (Platform.OS === 'android') return 'android';
   return 'web';
 }
 
 /**
- * Request permission, fetch the Expo push token, and send it to the API.
+ * Request permission, obtain the FCM device token, and register it with the API.
  * Safe to call on every login — the API upserts by token.
  */
 export async function registerForPushNotifications(): Promise<string | null> {
   if (!Device.isDevice) return null;
 
-  const { status: existingStatus } = await Notifications.getPermissionsAsync();
-  let finalStatus = existingStatus;
-  if (existingStatus !== 'granted') {
-    const { status } = await Notifications.requestPermissionsAsync();
-    finalStatus = status;
+  const { status } = await Notifications.getPermissionsAsync();
+  let final = status;
+  if (final !== 'granted') {
+    const req = await Notifications.requestPermissionsAsync();
+    final = req.status;
   }
-  if (finalStatus !== 'granted') return null;
+  if (final !== 'granted') return null;
+
+  if (Platform.OS === 'ios') {
+    const auth = await messaging().requestPermission();
+    const ok =
+      auth === AuthorizationStatus.AUTHORIZED ||
+      auth === AuthorizationStatus.PROVISIONAL;
+    if (!ok) return null;
+  }
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('default', {
@@ -43,18 +53,11 @@ export async function registerForPushNotifications(): Promise<string | null> {
     });
   }
 
-  const projectId =
-    Constants.expoConfig?.extra?.eas?.projectId ??
-    (Constants as unknown as { easConfig?: { projectId?: string } }).easConfig
-      ?.projectId;
-
-  const tokenResponse = await Notifications.getExpoPushTokenAsync(
-    projectId ? { projectId } : undefined,
-  );
-  const token = tokenResponse.data;
+  const token = await messaging().getToken();
+  if (!token) return null;
 
   const { error } = await registerPushToken({
-    expoPushToken: token,
+    fcmToken: token,
     platform: platformTag(),
   });
   if (error) {

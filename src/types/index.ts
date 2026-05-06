@@ -346,7 +346,7 @@ export interface MealPlansResponse extends GenericResponse {
 export type DevicePlatform = 'ios' | 'android' | 'web';
 
 export interface PushTokenRegisterRequest {
-  expoPushToken: string;
+  fcmToken: string;
   platform: DevicePlatform;
 }
 

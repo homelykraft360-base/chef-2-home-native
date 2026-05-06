@@ -7,6 +7,10 @@ dist/
 web-build/
 expo-env.d.ts
 
+# Firebase (download from Firebase Console; never commit)
+google-services.json
+GoogleService-Info.plist
+
 # Environment (keep .env.example)
 .env
 .env*.local
