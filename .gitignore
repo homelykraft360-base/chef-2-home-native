@@ -54,3 +54,6 @@ yarn-error.*
 
 # Testing
 coverage/
+
+# One-off store asset tooling
+.venv-storegen/

@@ -31,6 +31,10 @@ export default ({ config }) => ({
           // RN 0.81 + prebuilt React-Core: RNFB* as frameworks pulls non-modular React headers.
           // Keep Firebase pods statically linked; see react-native-firebase#8657 / Expo docs.
           forceStaticLinking: ['RNFBApp', 'RNFBMessaging'],
+          // RNFirebase static + FirebaseCoreInternal (Swift): GoogleUtilities needs module maps.
+          extraPods: [
+            { name: 'GoogleUtilities', modular_headers: true },
+          ],
           // If builds still fail, try: buildReactNativeFromSource: true (slower, skips prebuilt RN).
         },
       },

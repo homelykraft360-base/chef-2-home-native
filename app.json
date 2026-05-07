@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "scheme": "chef2home",
     "orientation": "portrait",
-    "icon": "./assets/chef2home_logo.png",
+    "icon": "./assets/app-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -20,15 +20,17 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "3"
+      "buildNumber": "4"
     },
     "android": {
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/chef2home_logo.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/app-icon-adaptive-foreground.png",
+        "backgroundColor": "#FF6B35"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "versionCode": 2
     },
     "web": {
       "favicon": "./assets/favicon.png"

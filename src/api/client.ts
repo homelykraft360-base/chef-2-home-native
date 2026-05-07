@@ -3,7 +3,9 @@ import axios, {
   type AxiosResponse,
   type InternalAxiosRequestConfig,
 } from 'axios';
+import * as Device from 'expo-device';
 import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
 import { store } from '../store';
 import { signOutUser } from '../store/authSlice';
@@ -14,9 +16,47 @@ interface CustomAxiosError extends InternalAxiosRequestConfig {
   _retry?: boolean;
 }
 
-const baseUrl = (
-  Constants.expoConfig?.extra?.baseUrl ?? 'http://localhost:8000'
-).replace(/\/+$/, '');
+/**
+ * Android emulator: `localhost` is the emulator itself, not the host machine — use 10.0.2.2.
+ * Physical device: user must set EXPO_PUBLIC_BASE_URL to the computer's LAN IP.
+ */
+function resolveApiBaseUrl(configured: string): string {
+  const trimmed = configured.replace(/\/+$/, '');
+  if (
+    typeof __DEV__ === 'undefined' ||
+    !__DEV__ ||
+    Platform.OS !== 'android'
+  ) {
+    return trimmed;
+  }
+  try {
+    const withScheme = /^https?:\/\//i.test(trimmed)
+      ? trimmed
+      : `http://${trimmed}`;
+    const u = new URL(withScheme);
+    const host = u.hostname.toLowerCase();
+    if (host !== 'localhost' && host !== '127.0.0.1') {
+      return trimmed;
+    }
+    if (Device.isDevice) {
+      console.warn(
+        '[API] Physical Android cannot use localhost — set EXPO_PUBLIC_BASE_URL to http://YOUR_LAN_IP:8000 (same Wi-Fi).',
+      );
+      return trimmed;
+    }
+    u.hostname = '10.0.2.2';
+    console.warn(
+      '[API] Android emulator: using 10.0.2.2 instead of localhost so the API on your computer is reachable.',
+    );
+    return u.toString().replace(/\/$/, '');
+  } catch {
+    return trimmed;
+  }
+}
+
+const baseUrl = resolveApiBaseUrl(
+  Constants.expoConfig?.extra?.baseUrl ?? 'http://localhost:8000',
+);
 
 const clientApi = axios.create({
   baseURL: `${baseUrl}/api/v1/`,
