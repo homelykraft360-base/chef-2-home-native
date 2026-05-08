@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Text, TextInput, TouchableOpacity } from 'react-native';
 import { type NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button } from 'react-native-paper';
+import * as Clipboard from 'expo-clipboard';
+import { Button, Snackbar } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
 
 import { resendCode, verifyOTP } from '../../api/authApi';
@@ -103,9 +104,6 @@ export default function OTPScreen({
   return (
     <>
       <AuthLayout title={title} subtitle={subtitle}>
-        {error ? (
-          <Text style={authStyles.errorText}>{error}</Text>
-        ) : null}
         <TextInput
           style={authStyles.inputOtp}
           placeholder="Verification code"
@@ -132,6 +130,24 @@ export default function OTPScreen({
         >
           <Text style={authStyles.linkText}>Resend code</Text>
         </TouchableOpacity>
+        <Snackbar
+          visible={Boolean(error)}
+          onDismiss={() => setError('')}
+          duration={4500}
+          wrapperStyle={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}
+          action={
+            __DEV__
+              ? {
+                  label: 'Copy',
+                  onPress: () => {
+                    void Clipboard.setStringAsync(error);
+                  },
+                }
+              : { label: 'Dismiss', onPress: () => setError('') }
+          }
+        >
+          {error}
+        </Snackbar>
       </AuthLayout>
       <SuccessModal
         visible={successModalVisible}

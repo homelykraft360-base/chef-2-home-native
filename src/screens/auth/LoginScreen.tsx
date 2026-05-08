@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Text, TextInput, TouchableOpacity } from 'react-native';
 import { type NativeStackScreenProps } from '@react-navigation/native-stack';
-import { Button } from 'react-native-paper';
+import * as Clipboard from 'expo-clipboard';
+import { Button, Snackbar } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
 
 import { login, signInWithGoogle } from '../../api/authApi';
@@ -47,11 +48,18 @@ export default function LoginScreen({ navigation }: Props) {
     setError('');
     setGoogleLoading(true);
     try {
-      const idToken = await getGoogleIdToken();
+      const result = await getGoogleIdToken();
       setGoogleLoading(false);
-      if (!idToken) return;
+      if (result.status === 'cancelled') return;
+      if (result.status === 'unavailable' || result.status === 'error') {
+        setError(result.error);
+        return;
+      }
+
       setGoogleLoading(true);
-      const { accessToken, user, error: apiError } = await signInWithGoogle(idToken);
+      const { accessToken, user, error: apiError } = await signInWithGoogle(
+        result.idToken,
+      );
       setGoogleLoading(false);
       if (apiError) {
         setError(apiError);
@@ -70,14 +78,12 @@ export default function LoginScreen({ navigation }: Props) {
   const isLoading = loading || googleLoading;
 
   return (
-    <AuthLayout
-      title="Welcome back"
-      subtitle="Sign into your account to pick up where you left off."
-    >
-      {error ? (
-        <Text style={authStyles.errorText}>{error}</Text>
-      ) : null}
-      {/* <TextInput
+    <>
+      <AuthLayout
+        title="Welcome back"
+        subtitle="Sign into your account to pick up where you left off."
+      >
+        {/* <TextInput
         style={authStyles.input}
         placeholder="Email"
         placeholderTextColor="#9ca3af"
@@ -88,47 +94,66 @@ export default function LoginScreen({ navigation }: Props) {
         autoCapitalize="none"
         keyboardType="email-address"
       /> */}
-      <TextInput
-        style={authStyles.input}
-        placeholder="Phone number"
-        placeholderTextColor="#9ca3af"
-        value={data.phoneNumber}
-        onChangeText={(v) =>
-          setData((prev) => ({ ...prev, phoneNumber: v }))
-        }
-        keyboardType="phone-pad"
-      />
-      <Button
-        mode="contained"
-        onPress={handleLogin}
-        loading={loading}
-        disabled={isLoading}
-        style={[authStyles.button, { backgroundColor: CHEF_ORANGE }]}
-        labelStyle={{ color: '#fff' }}
-      >
-        {loading ? 'Signing in...' : 'Sign in'}
-      </Button>
-      {isGoogleSignInAvailable ? (
+        <TextInput
+          style={authStyles.input}
+          placeholder="Phone number"
+          placeholderTextColor="#9ca3af"
+          value={data.phoneNumber}
+          onChangeText={(v) =>
+            setData((prev) => ({ ...prev, phoneNumber: v }))
+          }
+          keyboardType="phone-pad"
+        />
         <Button
-          mode="outlined"
-          onPress={handleGoogleSignIn}
-          loading={googleLoading}
+          mode="contained"
+          onPress={handleLogin}
+          loading={loading}
           disabled={isLoading}
-          style={[authStyles.button, { marginTop: 12 }]}
-          icon="google"
+          style={[authStyles.button, { backgroundColor: CHEF_ORANGE }]}
+          labelStyle={{ color: '#fff' }}
         >
-          Sign in with Google
+          {loading ? 'Signing in...' : 'Sign in'}
         </Button>
-      ) : null}
-      <TouchableOpacity
-        onPress={() => navigation.navigate('SignUp')}
-        style={authStyles.switchBtn}
+        {isGoogleSignInAvailable ? (
+          <Button
+            mode="outlined"
+            onPress={handleGoogleSignIn}
+            loading={googleLoading}
+            disabled={isLoading}
+            style={[authStyles.button, { marginTop: 12 }]}
+            icon="google"
+          >
+            Sign in with Google
+          </Button>
+        ) : null}
+        <TouchableOpacity
+          onPress={() => navigation.navigate('SignUp')}
+          style={authStyles.switchBtn}
+        >
+          <Text style={authStyles.linkTextMuted}>
+            Don't have an account?{' '}
+            <Text style={authStyles.linkText}>Sign up</Text>
+          </Text>
+        </TouchableOpacity>
+      </AuthLayout>
+      <Snackbar
+        visible={Boolean(error)}
+        onDismiss={() => setError('')}
+        duration={4500}
+        wrapperStyle={{ position: 'absolute', bottom: 0, left: 0, right: 0 }}
+        action={
+          __DEV__
+            ? {
+                label: 'Copy',
+                onPress: () => {
+                  void Clipboard.setStringAsync(error);
+                },
+              }
+            : { label: 'Dismiss', onPress: () => setError('') }
+        }
       >
-        <Text style={authStyles.linkTextMuted}>
-          Don't have an account?{' '}
-          <Text style={authStyles.linkText}>Sign up</Text>
-        </Text>
-      </TouchableOpacity>
-    </AuthLayout>
+        {error}
+      </Snackbar>
+    </>
   );
 }
