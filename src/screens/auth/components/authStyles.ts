@@ -2,6 +2,9 @@ import { StyleSheet } from 'react-native';
 
 import { CHEF_GREEN, ERROR_RED, GRAY_600 } from '../../../constants/theme';
 
+/** Matches react-native-paper MD3 `Button`: `5 * theme.roundness` with default roundness 4. */
+export const AUTH_PAPER_BUTTON_CORNER_RADIUS = 20;
+
 export const authStyles = StyleSheet.create({
   input: {
     borderWidth: 1,

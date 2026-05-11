@@ -1,19 +1,24 @@
-import { useState } from 'react';
-import { Text, TextInput, TouchableOpacity } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { type NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import { Button, Snackbar } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
 
-import { signUp, signInWithGoogle } from '../../api/authApi';
+import { signInWithApple, signInWithGoogle, signUp } from '../../api/authApi';
 import { setToken, setUser } from '../../store/authSlice';
 import { CHEF_ORANGE } from '../../constants/theme';
 import type { AuthStackParamList } from '../../navigation/types';
 import type { SignUpRequest } from '../../types';
+import {
+  AppleAuthentication,
+  getAppleSignInAvailability,
+  performAppleSignIn,
+} from '../../utils/appleSignIn';
 import { getGoogleIdToken, isGoogleSignInAvailable } from '../../utils/googleSignIn';
 
 import AuthLayout from './components/AuthLayout';
-import { authStyles } from './components/authStyles';
+import { AUTH_PAPER_BUTTON_CORNER_RADIUS, authStyles } from './components/authStyles';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'SignUp'>;
 
@@ -28,7 +33,52 @@ export default function SignUpScreen({ navigation }: Props) {
   });
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    void getAppleSignInAvailability().then(setAppleAvailable);
+  }, []);
+
+  const handleAppleSignIn = async () => {
+    setError('');
+    setAppleLoading(true);
+    try {
+      const result = await performAppleSignIn();
+      if (result.status === 'cancelled') {
+        setAppleLoading(false);
+        return;
+      }
+      if (result.status === 'unavailable' || result.status === 'error') {
+        setAppleLoading(false);
+        setError(
+          result.status === 'unavailable'
+            ? 'Apple sign-in is not available on this device.'
+            : result.error,
+        );
+        return;
+      }
+
+      const { accessToken, user, error: apiError } = await signInWithApple(
+        result.identityToken,
+        result.firstName,
+        result.lastName,
+      );
+      setAppleLoading(false);
+      if (apiError) {
+        setError(apiError);
+        return;
+      }
+      if (accessToken && user) {
+        dispatch(setToken(accessToken));
+        dispatch(setUser(user));
+      }
+    } catch (e) {
+      setAppleLoading(false);
+      setError(e instanceof Error ? e.message : 'Apple sign-in failed');
+    }
+  };
 
   const handleGoogleSignIn = async () => {
     setError('');
@@ -131,18 +181,34 @@ export default function SignUpScreen({ navigation }: Props) {
           mode="contained"
           onPress={handleSignUp}
           loading={loading}
-          disabled={loading || googleLoading}
+          disabled={loading || googleLoading || appleLoading}
           style={[authStyles.button, { backgroundColor: CHEF_ORANGE }]}
           labelStyle={{ color: '#fff' }}
         >
           {loading ? 'Creating account...' : 'Sign up'}
         </Button>
+        {appleAvailable ? (
+          <View
+            style={{ marginTop: 12, opacity: loading || googleLoading || appleLoading ? 0.6 : 1 }}
+            pointerEvents={loading || googleLoading || appleLoading ? 'none' : 'auto'}
+          >
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_UP}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={AUTH_PAPER_BUTTON_CORNER_RADIUS}
+              style={{ width: '100%', height: 44 }}
+              onPress={() => {
+                void handleAppleSignIn();
+              }}
+            />
+          </View>
+        ) : null}
         {isGoogleSignInAvailable ? (
           <Button
             mode="outlined"
             onPress={handleGoogleSignIn}
             loading={googleLoading}
-            disabled={loading || googleLoading}
+            disabled={loading || googleLoading || appleLoading}
             style={[authStyles.button, { marginTop: 12 }]}
             icon="google"
           >
