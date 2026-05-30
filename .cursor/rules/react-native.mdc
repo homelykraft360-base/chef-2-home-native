@@ -1,0 +1,15 @@
+---
+description: React Native app conventions and AGENTS.md
+globs: "**/*.ts,**/*.tsx"
+alwaysApply: false
+---
+
+# React Native app (chef-2-home-native)
+
+When editing code in this project, follow this project's **AGENTS.md** at the project root for:
+
+- Directory structure, naming, and conventions
+- React Native, Android, and iOS usability and performance best practices
+- API usage (`clientApi`), navigation types, and theme constants
+
+Read `AGENTS.md` before making structural or behavioral changes.

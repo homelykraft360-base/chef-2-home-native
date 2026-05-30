@@ -1,9 +1,13 @@
-import type { Invoice, SubscriptionCreationRequest } from '../types';
+import type {
+  Invoice,
+  InvoiceHistoryItem,
+  SubscriptionCreationRequest,
+} from '../types';
 import { tryCatch } from '../utils/error.utils';
 
 import { clientApi } from './client';
 
-const BASE_PATH = '/invoices';
+const BASE_PATH = '/invoices/';
 
 export const persistInvoiceCreation = async (
   payload: SubscriptionCreationRequest,
@@ -13,6 +17,16 @@ export const persistInvoiceCreation = async (
   );
   return {
     invoice: data,
+    error,
+  };
+};
+
+export const fetchMyInvoiceHistory = async () => {
+  const { error, data } = await tryCatch<{ invoices: InvoiceHistoryItem[] }>(
+    clientApi.get(`${BASE_PATH}history`),
+  );
+  return {
+    invoices: data?.invoices ?? [],
     error,
   };
 };

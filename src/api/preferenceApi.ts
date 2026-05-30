@@ -3,7 +3,7 @@ import { tryCatch } from '../utils/error.utils';
 
 import { clientApi } from './client';
 
-const BASE_PATH = '/preferences';
+const BASE_PATH = '/preferences/';
 
 export const fetchPreferences = async () => {
   const { error, data } = await tryCatch<PreferenceResponse>(

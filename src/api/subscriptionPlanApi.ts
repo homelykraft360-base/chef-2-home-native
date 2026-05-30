@@ -6,7 +6,7 @@ import { tryCatch } from '../utils/error.utils';
 
 import { clientApi } from './client';
 
-const BASE_PATH = '/subscription-plans';
+const BASE_PATH = '/subscription-plans/';
 
 export const fetchSubscriptionPlans = async () => {
   const { error, data } = await tryCatch<SubscriptionPlansResponse>(

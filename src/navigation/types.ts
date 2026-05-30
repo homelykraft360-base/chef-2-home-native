@@ -16,9 +16,18 @@ export type AuthStackParamList = {
 
 export type MainTabParamList = {
   Home: undefined;
-  Booking: undefined;
+  Meals: undefined;
   Subscription: undefined;
   Settings: undefined;
+};
+
+/** Root native stack: auth flow, tab shell, and modal-style app screens */
+export type RootStackParamList = {
+  Auth: undefined;
+  Main: undefined;
+  Booking: undefined;
+  IngredientCheckout: { mealPlanId: number };
+  IngredientReceipt: { invoiceId: number };
 };
 
 export type AuthStackScreenProps<T extends keyof AuthStackParamList> =
@@ -26,6 +35,9 @@ export type AuthStackScreenProps<T extends keyof AuthStackParamList> =
 
 declare global {
   namespace ReactNavigation {
-    interface RootParamList extends AuthStackParamList, MainTabParamList {}
+    interface RootParamList
+      extends AuthStackParamList,
+        MainTabParamList,
+        RootStackParamList {}
   }
 }

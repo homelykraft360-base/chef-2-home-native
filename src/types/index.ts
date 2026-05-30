@@ -80,9 +80,15 @@ export interface Invoice {
   channel?: string;
   amount: number;
   status: InvoiceStatus;
+  metaData?: Record<string, unknown> | null;
   paidAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** GET /invoices/history — rows with plan label for payment history UI. */
+export interface InvoiceHistoryItem extends Invoice {
+  planName?: string | null;
 }
 
 export interface Ingredient {
@@ -90,6 +96,7 @@ export interface Ingredient {
   name: string;
   unit: string;
   unitLabel: string;
+  /** Stored in kobo (smallest currency unit). Divide by 100 before displaying as naira. */
   cost: string;
   description: string;
   quantity: number;
@@ -98,13 +105,15 @@ export interface Ingredient {
   imageUrl?: string;
 }
 
+export type LagosLocation = 'lagos-island' | 'lagos-mainland';
+
 export interface LogisticsProps {
-  frequency: '';
-  selectedDays: Array<string>;
+  location: LagosLocation | '';
+  weeklySessionsCount: number;
+  selectedDays: string[];
   confirmKitchen: boolean;
-  selectedDayAndTime: { [key: string]: string };
+  selectedDayAndTime: Record<string, string>;
   preference?: 'cook-in' | 'delivery';
-  ingredients?: 'exclude' | 'include';
 }
 
 export interface Meal {
@@ -155,11 +164,12 @@ export interface Subscription {
   procureIngredients: boolean;
   delivery: boolean;
   autoRenewal: boolean;
+  weeklySessions?: number;
   subscriptionPlan: SubscriptionPlan;
   allergies?: string;
   cookingPreferences?: string;
   additionalNotes?: string;
-  visitingDays?: string;
+  visitingDays?: Record<string, string> | string;
   paystackSubscriptionCode?: string;
 }
 
@@ -168,24 +178,27 @@ export interface SubscriptionCreationRequest {
   procureIngredients: boolean;
   delivery: boolean;
   autoRenewal: boolean;
-  visitingDays: {
-    [key: string]: string;
-  };
+  weeklySessions: number;
+  visitingDays: Record<string, string>;
   preferences: Omit<PreferenceRequest, 'emailNotifications'>;
+  location?: LagosLocation | '';
 }
 
+export interface SubscriptionPlanMenu {
+  id: number;
+  subscriptionPlanId: number;
+  meals: Meal[];
+}
+
+/** Amount in kobo (API). */
 export interface SubscriptionPlan {
   id: number;
   name: string;
   amount: number;
-  cost: number;
-  duration: number;
-  frequency: number;
-  chefTier: ChefTierType;
   isActive: boolean;
-  interval: string;
-  includes?: string;
+  multiplier: number;
   description?: string;
+  menus?: SubscriptionPlanMenu[];
   colorScheme?: string;
   paystackPlanId?: string;
 }
@@ -280,10 +293,144 @@ export interface SubscriptionResponse extends GenericResponse {
   subscription?: Subscription | null;
 }
 
+export type DayOfWeek =
+  | 'sunday'
+  | 'monday'
+  | 'tuesday'
+  | 'wednesday'
+  | 'thursday'
+  | 'friday'
+  | 'saturday';
+
+export type MealSelectionSource = 'user' | 'prior_week' | 'admin_default';
+
+export interface MealPlanDay {
+  id: number;
+  dayOfWeek: DayOfWeek;
+  source: MealSelectionSource;
+  meals: Meal[];
+}
+
+export interface MealPlan {
+  id: number;
+  userId: number;
+  subscriptionId: number;
+  weekStart: string;
+  days: MealPlanDay[];
+  /** From list/get meal plan API; used to surface ingredient checkout for past unpaid weeks. */
+  ingredientPaymentStatus?: IngredientPaymentStatus;
+}
+
+export interface MealPlanDayInput {
+  dayOfWeek: DayOfWeek;
+  mealIds: number[];
+}
+
+export interface MealPlanCreateRequest {
+  weekStart: string;
+  days: MealPlanDayInput[];
+}
+
+export interface MealPlanUpdateRequest {
+  days: MealPlanDayInput[];
+}
+
+export interface MealPlanResponse extends GenericResponse {
+  mealPlan?: MealPlan | null;
+}
+
+export interface MealPlansResponse extends GenericResponse {
+  mealPlans: MealPlan[];
+}
+
+export type DevicePlatform = 'ios' | 'android' | 'web';
+
+export interface PushTokenRegisterRequest {
+  fcmToken: string;
+  platform: DevicePlatform;
+}
+
 export interface SubscriptionPlanResponse extends GenericResponse {
   subscriptionPlan: SubscriptionPlan | null;
 }
 
 export interface SubscriptionPlansResponse extends GenericResponse {
   subscriptionPlans: SubscriptionPlan[];
+}
+
+// ===== Weekly Ingredient Payment =====
+export type ExclusionReason = 'have' | 'self_source';
+export type IngredientPaymentStatus = 'unpaid' | 'pending' | 'paid';
+
+export interface MealPlanIngredientRow {
+  ingredientId: number;
+  name: string;
+  unit?: string | null;
+  quantity: number;
+  unitCostKobo: number;
+  lineTotalKobo: number;
+  isExcluded: boolean;
+  exclusionReason?: ExclusionReason | null;
+  imageUrl?: string | null;
+}
+
+export interface MealPlanMealRow {
+  mealPlanDayId: number;
+  mealId: number;
+  dayOfWeek: DayOfWeek;
+  mealName: string;
+  mealImageUrl?: string | null;
+  ingredients: MealPlanIngredientRow[];
+  mealSubtotalKobo: number;
+}
+
+export interface MealPlanIngredientBreakdown {
+  mealPlanId: number;
+  weekStart: string;
+  cutoffPassed: boolean;
+  meals: MealPlanMealRow[];
+  grossTotalKobo: number;
+  excludedTotalKobo: number;
+  payableTotalKobo: number;
+  paymentStatus: IngredientPaymentStatus;
+  invoiceId?: number | null;
+}
+
+export interface IngredientExclusionInput {
+  mealPlanDayId: number;
+  mealId: number;
+  ingredientId: number;
+  reason: ExclusionReason;
+}
+
+export interface IngredientCheckoutResponse {
+  authorizationUrl?: string | null;
+  accessCode?: string | null;
+  reference: string;
+  invoiceId: number;
+  amount: number;
+}
+
+export interface InvoiceIngredientLine {
+  id: number;
+  mealId: number;
+  mealName: string;
+  dayOfWeek: DayOfWeek;
+  ingredientId: number;
+  ingredientName: string;
+  unit?: string | null;
+  quantity: number;
+  unitCostKobo: number;
+  lineTotalKobo: number;
+  wasExcluded: boolean;
+  exclusionReason?: ExclusionReason | null;
+}
+
+export interface InvoiceIngredientBreakdown {
+  invoiceId: number;
+  weekStart?: string | null;
+  mealPlanId?: number | null;
+  paidAt?: string | null;
+  amount: number;
+  lines: InvoiceIngredientLine[];
 }
