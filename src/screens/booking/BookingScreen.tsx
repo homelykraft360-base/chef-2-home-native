@@ -29,7 +29,10 @@ import type {
   PreferenceProps,
   SubscriptionPlan,
 } from '../../types';
-import { mapToSubscriptionCreationRequest } from '../../utils/booking.helper';
+import {
+  computeBookingMonthlyTotalNaira,
+  mapToSubscriptionCreationRequest,
+} from '../../utils/booking.helper';
 import {
   formatDate,
   formatToReadableNumber,
@@ -202,7 +205,7 @@ export default function BookingScreen() {
       const amountNaira =
         amountKobo != null && Number.isFinite(amountKobo)
           ? amountKobo / 100
-          : selectedPlan.amount / 100;
+          : computeBookingMonthlyTotalNaira(selectedPlan, logistics);
 
       popup.checkout({
         email: user.email,
@@ -227,7 +230,7 @@ export default function BookingScreen() {
         onCancel: () => {},
       });
     },
-    [popup, selectedPlan, user],
+    [popup, selectedPlan, user, logistics],
   );
 
   const handleCreateSubscription = () => {
@@ -253,6 +256,14 @@ export default function BookingScreen() {
       onError: (err) => Alert.alert('Booking', String(err)),
     });
   };
+
+  const monthlyTotalNaira = useMemo(
+    () =>
+      selectedPlan
+        ? computeBookingMonthlyTotalNaira(selectedPlan, logistics)
+        : 0,
+    [selectedPlan, logistics],
+  );
 
   const planCap = selectedPlan ? getPlanWeeklyVisitCap(selectedPlan) : 5;
   const dayPickCap = Math.max(
@@ -632,10 +643,10 @@ export default function BookingScreen() {
 
           <View style={styles.payCard}>
             <Text style={[styles.planAccent, { color: CHEF_ORANGE }]}>
-              {selectedPlan.name}
+              Total
             </Text>
             <Text style={styles.payAmount}>
-              {formatToMoney(selectedPlan.amount / 100, false)}
+              {formatToMoney(monthlyTotalNaira, false)}
               <Text style={styles.payInterval}> /month</Text>
             </Text>
             <View style={styles.row}>

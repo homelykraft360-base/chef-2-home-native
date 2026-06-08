@@ -1,11 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import {
-  LAGOS_ISLAND_PER_VISIT_NAIRA,
-  LAGOS_MAINLAND_PER_VISIT_NAIRA,
-  WEEKLY_VISIT_MONTHLY_WEEKS,
-} from '../../../constants/booking';
 import type { LogisticsProps, SubscriptionPlan } from '../../../types';
+import {
+  computeBookingMonthlyTotalNaira,
+  computeVisitFeesNaira,
+} from '../../../utils/booking.helper';
 import { formatToReadableNumber } from '../../../utils/string.utils';
 
 function menuLineLabel(plan: SubscriptionPlan): string {
@@ -40,17 +39,8 @@ export default function PricingBreakdownCard({ plan, logistics }: Props) {
   }
 
   const menuAmountNaira = plan.amount / 100;
-  const perVisitNaira =
-    logistics.location === 'lagos-island'
-      ? LAGOS_ISLAND_PER_VISIT_NAIRA
-      : logistics.location === 'lagos-mainland'
-        ? LAGOS_MAINLAND_PER_VISIT_NAIRA
-        : 0;
   const weeklyVisits = logistics.weeklySessionsCount;
-  const visitFeesNaira =
-    perVisitNaira > 0
-      ? weeklyVisits * perVisitNaira * WEEKLY_VISIT_MONTHLY_WEEKS
-      : 0;
+  const visitFeesNaira = computeVisitFeesNaira(logistics);
   const visitFeesLabel =
     logistics.location === 'lagos-island'
       ? 'Weekly visits (Lagos Island)'
@@ -58,7 +48,7 @@ export default function PricingBreakdownCard({ plan, logistics }: Props) {
         ? 'Weekly visits (Lagos Mainland)'
         : 'Weekly visits';
 
-  const totalNaira = menuAmountNaira + visitFeesNaira;
+  const totalNaira = computeBookingMonthlyTotalNaira(plan, logistics);
 
   return (
     <View style={[styles.card, styles.cardElevated]}>
@@ -79,6 +69,11 @@ export default function PricingBreakdownCard({ plan, logistics }: Props) {
         <Text style={styles.totalLabel}>Estimated monthly</Text>
         <Text style={styles.totalValue}>₦ {fmt(totalNaira)}</Text>
       </View>
+      <Text style={styles.disclaimer}>
+        Prices may change. This estimate reflects current plan and visit rates;
+        the amount confirmed at checkout applies to your subscription. See our
+        Terms & Conditions for how we update pricing.
+      </Text>
     </View>
   );
 }
@@ -125,4 +120,10 @@ const styles = StyleSheet.create({
   },
   totalLabel: { fontSize: 15, fontWeight: '700', color: '#101928' },
   totalValue: { fontSize: 15, fontWeight: '700', color: '#101928' },
+  disclaimer: {
+    marginTop: 14,
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#6b7280',
+  },
 });
