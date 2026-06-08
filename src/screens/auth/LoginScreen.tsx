@@ -1,19 +1,24 @@
-import { useState } from 'react';
-import { Text, TextInput, TouchableOpacity } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { type NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import { Button, Snackbar } from 'react-native-paper';
 import { useDispatch } from 'react-redux';
 
-import { login, signInWithGoogle } from '../../api/authApi';
+import { login, signInWithApple, signInWithGoogle } from '../../api/authApi';
 import { setToken, setUser } from '../../store/authSlice';
 import { CHEF_ORANGE } from '../../constants/theme';
 import type { AuthStackParamList } from '../../navigation/types';
 import type { SignInRequest } from '../../types';
+import {
+  AppleAuthentication,
+  getAppleSignInAvailability,
+  performAppleSignIn,
+} from '../../utils/appleSignIn';
 import { getGoogleIdToken, isGoogleSignInAvailable } from '../../utils/googleSignIn';
 
 import AuthLayout from './components/AuthLayout';
-import { authStyles } from './components/authStyles';
+import { AUTH_PAPER_BUTTON_CORNER_RADIUS, authStyles } from './components/authStyles';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -25,7 +30,13 @@ export default function LoginScreen({ navigation }: Props) {
   });
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [appleLoading, setAppleLoading] = useState(false);
+  const [appleAvailable, setAppleAvailable] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    void getAppleSignInAvailability().then(setAppleAvailable);
+  }, []);
 
   const handleLogin = async () => {
     setError('');
@@ -42,6 +53,45 @@ export default function LoginScreen({ navigation }: Props) {
       isSignUp: false,
       emailOrPlatformId: data.emailOrPlatformId,
     });
+  };
+
+  const handleAppleSignIn = async () => {
+    setError('');
+    setAppleLoading(true);
+    try {
+      const result = await performAppleSignIn();
+      if (result.status === 'cancelled') {
+        setAppleLoading(false);
+        return;
+      }
+      if (result.status === 'unavailable' || result.status === 'error') {
+        setAppleLoading(false);
+        setError(
+          result.status === 'unavailable'
+            ? 'Apple sign-in is not available on this device.'
+            : result.error,
+        );
+        return;
+      }
+
+      const { accessToken, user, error: apiError } = await signInWithApple(
+        result.identityToken,
+        result.firstName,
+        result.lastName,
+      );
+      setAppleLoading(false);
+      if (apiError) {
+        setError(apiError);
+        return;
+      }
+      if (accessToken && user) {
+        dispatch(setToken(accessToken));
+        dispatch(setUser(user));
+      }
+    } catch (e) {
+      setAppleLoading(false);
+      setError(e instanceof Error ? e.message : 'Apple sign-in failed');
+    }
   };
 
   const handleGoogleSignIn = async () => {
@@ -75,7 +125,7 @@ export default function LoginScreen({ navigation }: Props) {
     }
   };
 
-  const isLoading = loading || googleLoading;
+  const isLoading = loading || googleLoading || appleLoading;
 
   return (
     <>
@@ -114,6 +164,22 @@ export default function LoginScreen({ navigation }: Props) {
         >
           {loading ? 'Signing in...' : 'Sign in'}
         </Button>
+        {appleAvailable ? (
+          <View
+            style={{ marginTop: 12, opacity: isLoading ? 0.6 : 1 }}
+            pointerEvents={isLoading ? 'none' : 'auto'}
+          >
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+              buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+              cornerRadius={AUTH_PAPER_BUTTON_CORNER_RADIUS}
+              style={{ width: '100%', height: 44 }}
+              onPress={() => {
+                void handleAppleSignIn();
+              }}
+            />
+          </View>
+        ) : null}
         {isGoogleSignInAvailable ? (
           <Button
             mode="outlined"

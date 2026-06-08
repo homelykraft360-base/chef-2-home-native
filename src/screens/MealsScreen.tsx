@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -153,6 +154,7 @@ export default function MealsScreen() {
   const [selections, setSelections] = useState<DaySelections>({} as DaySelections);
   const [activeDay, setActiveDay] = useState<DayOfWeek | null>(null);
   const [applyToAll, setApplyToAll] = useState(false);
+  const [shoppingNotes, setShoppingNotes] = useState('');
 
   const planDayMap = useMemo(() => {
     const map = new Map<DayOfWeek, MealPlanDay>();
@@ -218,6 +220,10 @@ export default function MealsScreen() {
     setSelections(seeded);
     setActiveDay((prev) => (prev && seeded[prev] ? prev : visitingDays[0].day));
   }, [mealPlan, visitingDays]);
+
+  useEffect(() => {
+    setShoppingNotes(mealPlan?.shoppingNotes ?? '');
+  }, [mealPlan?.id, mealPlan?.shoppingNotes]);
 
   const dayLocked = useCallback(
     (weekStart: string, day: DayOfWeek, timeOfDay: string) =>
@@ -291,6 +297,7 @@ export default function MealsScreen() {
         weekStart: selectedWeek,
         days: payloadDays,
         existingPlanId: mealPlan?.id,
+        shoppingNotes: shoppingNotes.trim() || null,
       },
       onSuccess: () => {
         Alert.alert(
@@ -330,8 +337,15 @@ export default function MealsScreen() {
           }
           const existingId = existingIdByWeek.get(week);
           const res = existingId
-            ? await updateMealPlan(existingId, { days: payloadDays })
-            : await createMealPlan({ weekStart: week, days: payloadDays });
+            ? await updateMealPlan(existingId, {
+                days: payloadDays,
+                shoppingNotes: shoppingNotes.trim() || null,
+              })
+            : await createMealPlan({
+                weekStart: week,
+                days: payloadDays,
+                shoppingNotes: shoppingNotes.trim() || null,
+              });
           return { week, skipped: false as const, error: res.error };
         }),
       );
@@ -536,6 +550,30 @@ export default function MealsScreen() {
             <Text style={styles.sourceTag}>{activeSourceLabel}</Text>
           ) : null}
         </View>
+
+        {!ingredientsPaidForWeek ? (
+          <View style={styles.notesBox}>
+            <Text style={styles.notesLabel}>Shopping notes (optional)</Text>
+            <Text style={styles.notesHint}>
+              Brand preferences, substitutes, or items to avoid — saved for this week.
+            </Text>
+            <TextInput
+              style={styles.notesInput}
+              value={shoppingNotes}
+              onChangeText={setShoppingNotes}
+              placeholder="e.g. Use Gino tomato paste, no cilantro"
+              placeholderTextColor={GRAY_400}
+              multiline
+              maxLength={2000}
+              editable={!savingAny && !activeLocked}
+            />
+          </View>
+        ) : mealPlan?.effectiveShoppingNotes ? (
+          <View style={styles.notesBox}>
+            <Text style={styles.notesLabel}>Shopping notes</Text>
+            <Text style={styles.notesReadonly}>{mealPlan.effectiveShoppingNotes}</Text>
+          </View>
+        ) : null}
       </View>
 
       {isLoading && !meals ? (
@@ -729,6 +767,21 @@ const styles = StyleSheet.create({
   },
   lockedTag: { fontSize: 12, color: ERROR_RED, marginTop: 4, fontWeight: '600' },
   sourceTag: { fontSize: 12, color: GRAY_600, marginTop: 4, fontStyle: 'italic' },
+  notesBox: { marginTop: 12, paddingHorizontal: 4 },
+  notesLabel: { fontSize: 14, fontWeight: '600', color: CHEF_GREY },
+  notesHint: { fontSize: 12, color: GRAY_600, marginTop: 4, marginBottom: 8 },
+  notesInput: {
+    minHeight: 72,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    padding: 10,
+    fontSize: 14,
+    color: CHEF_GREY,
+    backgroundColor: '#fff',
+    textAlignVertical: 'top',
+  },
+  notesReadonly: { fontSize: 14, color: GRAY_600, marginTop: 6 },
   listWrap: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 },
   sectionHeader: {

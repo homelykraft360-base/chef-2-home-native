@@ -121,3 +121,22 @@ export const signInWithGoogle = async (
   );
   return normalized;
 };
+
+export const signInWithApple = async (
+  identityToken: string,
+  firstName?: string | null,
+  lastName?: string | null,
+): Promise<AuthResponse> => {
+  const { data, error } = await tryCatch<Record<string, unknown>>(
+    clientApi.post('/auth/apple', {
+      id_token: identityToken,
+      first_name: firstName ?? undefined,
+      last_name: lastName ?? undefined,
+    }),
+  );
+  if (error || !data) return { accessToken: undefined, user: undefined, error: error ?? 'No response' };
+  const normalized = normalizeAuthResponse(
+    data as Parameters<typeof normalizeAuthResponse>[0],
+  );
+  return normalized;
+};

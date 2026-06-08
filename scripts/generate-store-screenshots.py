@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Resize phone screenshots to App Store canvas sizes (cover + center crop).
+"""Resize source screenshots to store canvas sizes (cover + center crop).
+
+Outputs iOS (iPhone / iPad) and Google Play (phone + 7\" / 10\" tablet) folders.
 
 Usage (from repo root):
   cd chef-2-home-native && python3 -m venv .venv-storegen && source .venv-storegen/bin/activate
@@ -26,12 +28,20 @@ SOURCE_PATHS = [
     ("01-sign-in", _DEFAULT_ASSETS / "Screenshot_1778110842-79d13187-dfd5-49f8-bd57-faf157406c36.png"),
     ("02-meals-subscription", _DEFAULT_ASSETS / "Screenshot_1778111183-4e2beedd-edcd-4684-9615-2549bbc6f6db.png"),
     ("03-account-settings", _DEFAULT_ASSETS / "Screenshot_1778111194-fe5daad8-da13-4937-9c6e-d0ee5c5043e5.png"),
+    (
+        "04-your-schedule",
+        _DEFAULT_ASSETS / "Screenshot_1778111249-372da1fe-7552-44b1-baa1-aeb25ae57d25.png",
+    ),
 ]
 
 # iPhone 6.5" Display — ASC accepts portrait: 1242×2688 or 1284×2778 (and landscape swaps).
+# Play Console — phone + tablet slots (portrait; within min/max side limits).
 CANVAS = {
     "iphone-6_5": (1284, 2778),
     "ipad-13": (2064, 2752),
+    "android-phone": (1080, 2340),
+    "android-tablet-7": (1080, 1920),
+    "android-tablet-10": (1600, 2560),
 }
 
 

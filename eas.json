@@ -17,9 +17,19 @@
       "android": {
         "buildType": "app-bundle"
       }
+    },
+    "production-simulator": {
+      "environment": "production",
+      "ios": {
+        "simulator": true
+      }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "android": {
+        "releaseStatus": "draft"
+      }
+    }
   }
 }

@@ -319,6 +319,9 @@ export interface MealPlan {
   days: MealPlanDay[];
   /** From list/get meal plan API; used to surface ingredient checkout for past unpaid weeks. */
   ingredientPaymentStatus?: IngredientPaymentStatus;
+  shoppingNotes?: string | null;
+  shoppingNotesOps?: string | null;
+  effectiveShoppingNotes?: string | null;
 }
 
 export interface MealPlanDayInput {
@@ -329,10 +332,12 @@ export interface MealPlanDayInput {
 export interface MealPlanCreateRequest {
   weekStart: string;
   days: MealPlanDayInput[];
+  shoppingNotes?: string | null;
 }
 
 export interface MealPlanUpdateRequest {
   days: MealPlanDayInput[];
+  shoppingNotes?: string | null;
 }
 
 export interface MealPlanResponse extends GenericResponse {

@@ -7,6 +7,7 @@ import { PaystackProvider } from 'react-native-paystack-webview';
 import { MD3LightTheme, PaperProvider } from 'react-native-paper';
 import Constants from 'expo-constants';
 
+import { PAYSTACK_NGN_CHANNELS } from './src/constants/paystack';
 import RootNavigator from './src/navigation/RootNavigator';
 import { persistor, store } from './src/store';
 
@@ -45,7 +46,10 @@ export default function App() {
   return (
     <ReduxProvider store={store}>
       <RehydrateGate>
-        <PaystackProvider publicKey={paystackKey}>
+        <PaystackProvider
+          publicKey={paystackKey}
+          defaultChannels={[...PAYSTACK_NGN_CHANNELS]}
+        >
           <PaperProvider theme={paperTheme}>
             <NavigationContainer>
               <RootNavigator />

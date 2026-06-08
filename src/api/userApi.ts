@@ -39,3 +39,13 @@ export const registerPushToken = async (payload: PushTokenRegisterRequest) => {
     error,
   };
 };
+
+export const deleteMyAccount = async () => {
+  const { data, error } = await tryCatch<MessageResponse>(
+    clientApi.delete(`${BASE_PATH}me`),
+  );
+  return {
+    message: data?.message,
+    error,
+  };
+};

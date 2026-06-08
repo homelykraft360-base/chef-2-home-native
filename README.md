@@ -53,6 +53,8 @@ Use [EAS Build](https://docs.expo.dev/build/introduction/) for production iOS/An
 npx eas build --platform all
 ```
 
+To **run locally against production API / keys** (`.env.production`), see **[docs/RUN-PRODUCTION.md](docs/RUN-PRODUCTION.md)**.
+
 ## Optional: Sentry
 
 To add error tracking, install `@sentry/react-native` and initialise in `App.tsx` as per [Sentry React Native docs](https://docs.sentry.io/platforms/react-native/).

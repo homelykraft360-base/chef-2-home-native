@@ -21,6 +21,12 @@ export default ({ config }) => {
     ios: {
       ...config.ios,
       bundleIdentifier: 'com.homelykraft.chef2home',
+      usesAppleSignIn: true,
+      /** Required for ASAuthorization; without it, devices often report AK -7026 / AS error 1000. */
+      entitlements: {
+        ...(config.ios?.entitlements ?? {}),
+        'com.apple.developer.applesignin': ['Default'],
+      },
       googleServicesFile:
         process.env.GOOGLE_SERVICE_INFO_PLIST ?? './GoogleService-Info.plist',
       infoPlist: {
@@ -65,6 +71,7 @@ export default ({ config }) => {
           iosUrlScheme: googleIosUrlScheme,
         },
       ],
+      'expo-apple-authentication',
       'expo-notifications',
     ],
     extra: {

@@ -1,9 +1,11 @@
 {
   "name": "chef-2-home-mobile",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "main": "index.ts",
   "scripts": {
     "start": "expo start --dev-client",
+    "start:prod": "NODE_ENV=production expo start --dev-client",
+    "start:prod:release": "NODE_ENV=production expo start --dev-client --no-dev --minify",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "ios:debug": "expo run:ios --configuration Debug",
@@ -12,9 +14,12 @@
     "build:android:apk": "eas build --platform android --profile preview",
     "build:android:aab": "eas build --platform android --profile production",
     "build:ios": "eas build --platform ios --profile production",
+    "build:ios:simulator": "eas build --platform ios --profile production-simulator",
     "build:all": "eas build --platform all --profile production",
     "submit:ios": "eas submit --platform ios --latest",
-    "submit:android": "eas submit --platform android --latest"
+    "submit:android": "eas submit --platform android --latest",
+    "version:update": "node scripts/update-mobile-versions.mjs",
+    "version:update:dry-run": "node scripts/update-mobile-versions.mjs --dry-run"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -29,6 +34,7 @@
     "axios": "^1.13.5",
     "dayjs": "^1.11.19",
     "expo": "~54.0.33",
+    "expo-apple-authentication": "~8.0.8",
     "expo-build-properties": "~1.0.10",
     "expo-clipboard": "^55.0.13",
     "expo-constants": "^18.0.13",
