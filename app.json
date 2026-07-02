@@ -2,7 +2,7 @@
   "expo": {
     "name": "Chef2Home",
     "slug": "chef-2-home",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "scheme": "chef2home",
     "orientation": "portrait",
     "icon": "./assets/app-icon.png",
@@ -20,7 +20,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "12"
+      "buildNumber": "13"
     },
     "android": {
       "googleServicesFile": "./google-services.json",
@@ -30,7 +30,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "versionCode": 8
+      "versionCode": 9
     },
     "web": {
       "favicon": "./assets/favicon.png"
