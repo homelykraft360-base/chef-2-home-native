@@ -20,7 +20,7 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       },
-      "buildNumber": "13"
+      "buildNumber": "14"
     },
     "android": {
       "googleServicesFile": "./google-services.json",
@@ -30,7 +30,7 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "versionCode": 9
+      "versionCode": 12
     },
     "web": {
       "favicon": "./assets/favicon.png"
