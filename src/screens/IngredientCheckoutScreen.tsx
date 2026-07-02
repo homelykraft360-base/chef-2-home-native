@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,8 +12,10 @@ import { Button, Checkbox } from 'react-native-paper';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { RouteProp } from '@react-navigation/native';
 import { usePaystack } from 'react-native-paystack-webview';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import PaystackResumeTransactionModal from '../components/PaystackResumeTransactionModal';
+import ShoppingNotesSheet from '../components/ShoppingNotesSheet';
 import {
   CHEF_GREEN,
   CHEF_GREY,
@@ -73,13 +75,17 @@ function IngredientRow({
   row,
   onToggle,
   disabled,
+  showTopBorder = true,
 }: {
   row: MealPlanIngredientRow;
   onToggle: (ingredientId: number, reason: ExclusionReason) => void;
   disabled?: boolean;
+  showTopBorder?: boolean;
 }) {
   return (
-    <View style={styles.ingredientRow}>
+    <View
+      style={[styles.ingredientRow, showTopBorder && styles.ingredientRowBorder]}
+    >
       <View style={styles.ingredientText}>
         <Text
           style={[
@@ -118,27 +124,54 @@ function MealCard({
   ) => void;
   disabled?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(true);
+  const ingredientCount = meal.ingredients.length;
+
   return (
     <View style={styles.mealCard}>
-      <View style={styles.mealHeader}>
-        <View style={{ flex: 1 }}>
+      <TouchableOpacity
+        style={styles.mealHeader}
+        onPress={() => setExpanded((open) => !open)}
+        activeOpacity={0.7}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`${meal.mealName} ingredients`}
+      >
+        <View style={styles.mealHeaderText}>
           <Text style={styles.mealDay}>{dayLabel(meal.dayOfWeek)}</Text>
           <Text style={styles.mealName}>{meal.mealName}</Text>
+          <Text style={styles.mealIngredientMeta}>
+            {ingredientCount}{' '}
+            {ingredientCount === 1 ? 'ingredient' : 'ingredients'}
+          </Text>
         </View>
-        <Text style={styles.mealSubtotal}>
-          {formatToMoney((meal.mealSubtotalKobo / 100).toFixed(2))}
-        </Text>
-      </View>
-      {meal.ingredients.map((ing) => (
-        <IngredientRow
-          key={`${meal.mealPlanDayId}:${meal.mealId}:${ing.ingredientId}`}
-          row={ing}
-          disabled={disabled}
-          onToggle={(ingredientId, reason) =>
-            onToggle(meal.mealPlanDayId, meal.mealId, ingredientId, reason)
-          }
-        />
-      ))}
+        <View style={styles.mealHeaderEnd}>
+          <Text style={styles.mealSubtotal}>
+            {formatToMoney((meal.mealSubtotalKobo / 100).toFixed(2))}
+          </Text>
+          <MaterialCommunityIcons
+            name={expanded ? 'chevron-up' : 'chevron-down'}
+            size={22}
+            color={GRAY_600}
+          />
+        </View>
+      </TouchableOpacity>
+      {expanded ? (
+        <View style={styles.ingredientsList}>
+          <Text style={styles.ingredientsListLabel}>Ingredients</Text>
+          {meal.ingredients.map((ing, index) => (
+            <IngredientRow
+              key={`${meal.mealPlanDayId}:${meal.mealId}:${ing.ingredientId}`}
+              row={ing}
+              disabled={disabled}
+              showTopBorder={index > 0}
+              onToggle={(ingredientId, reason) =>
+                onToggle(meal.mealPlanDayId, meal.mealId, ingredientId, reason)
+              }
+            />
+          ))}
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -149,6 +182,8 @@ export default function IngredientCheckoutScreen() {
   const { mealPlanId } = route.params ?? { mealPlanId: 0 };
   const { popup } = usePaystack();
   const [paystackResumeCode, setPaystackResumeCode] = useState<string | null>(null);
+  const [shoppingNotes, setShoppingNotes] = useState('');
+  const [notesSheetOpen, setNotesSheetOpen] = useState(false);
   const { user } = useGetCurrentUserDetails();
   const {
     breakdown,
@@ -168,13 +203,23 @@ export default function IngredientCheckoutScreen() {
     [breakdown, paying],
   );
 
+  useEffect(() => {
+    if (!breakdown) return;
+    setShoppingNotes(breakdown.shoppingNotes ?? '');
+  }, [breakdown?.mealPlanId, breakdown?.shoppingNotes]);
+
+  const notesReadOnly = breakdown?.paymentStatus === 'paid';
+  const displayedNotes = notesReadOnly
+    ? breakdown?.effectiveShoppingNotes ?? ''
+    : shoppingNotes;
+
   const closePaystackResume = useCallback(() => {
     setPaystackResumeCode(null);
   }, []);
 
   const handlePay = useCallback(async () => {
     if (!user?.email || !breakdown) return;
-    const checkoutResp = await checkout();
+    const checkoutResp = await checkout(shoppingNotes.trim() || null);
     if (!checkoutResp) return;
 
     // Backend already called Paystack `transaction/initialize`; the inline SDK
@@ -214,7 +259,7 @@ export default function IngredientCheckoutScreen() {
       },
       onCancel: () => {},
     });
-  }, [breakdown, checkout, navigation, popup, refetch, user]);
+  }, [breakdown, checkout, navigation, popup, refetch, shoppingNotes, user]);
 
   if (loading || !breakdown) {
     return (
@@ -264,12 +309,6 @@ export default function IngredientCheckoutScreen() {
         <Text style={styles.weekHeading}>
           Week of {weekRangeLabel(breakdown.weekStart)}
         </Text>
-        {breakdown.paymentStatus !== 'paid' && !breakdown.cutoffPassed ? (
-          <Text style={styles.disclaimerBanner}>
-            Tick the checkbox next to any ingredient you already have to exclude
-            it. We'll only charge you for what we'll buy.
-          </Text>
-        ) : null}
         {error && <Text style={styles.errorBanner}>{error}</Text>}
         {breakdown.cutoffPassed && breakdown.paymentStatus !== 'unpaid' && (
           <Text style={styles.lockedBanner}>
@@ -290,6 +329,12 @@ export default function IngredientCheckoutScreen() {
             Payment is being processed — refresh in a few minutes.
           </Text>
         )}
+        {breakdown.paymentStatus !== 'paid' && !breakdown.cutoffPassed ? (
+          <Text style={styles.disclaimerBanner}>
+            Tick the checkbox next to any ingredient you already have to exclude
+            it. We'll only charge you for what we'll buy.
+          </Text>
+        ) : null}
 
         {breakdown.meals.map((meal) => (
           <MealCard
@@ -299,6 +344,39 @@ export default function IngredientCheckoutScreen() {
             onToggle={toggleIngredient}
           />
         ))}
+
+        <View style={styles.notesCard}>
+          <Text style={styles.notesTitle}>Shopping notes</Text>
+          <Text style={styles.notesHint}>
+            Tell your chef about brands, substitutes, or items to avoid before we
+            shop.
+          </Text>
+          {displayedNotes.trim() ? (
+            <Text style={styles.notesPreview} numberOfLines={3}>
+              {displayedNotes}
+            </Text>
+          ) : (
+            <Text style={styles.notesEmpty}>No notes added yet.</Text>
+          )}
+          <TouchableOpacity
+            style={styles.notesBtn}
+            onPress={() => setNotesSheetOpen(true)}
+            disabled={paying}
+          >
+            <MaterialCommunityIcons
+              name="note-text-outline"
+              size={18}
+              color={CHEF_ORANGE}
+            />
+            <Text style={styles.notesBtnText}>
+              {notesReadOnly
+                ? 'View shopping notes'
+                : shoppingNotes.trim()
+                  ? 'Edit shopping notes'
+                  : 'Add shopping notes'}
+            </Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.totalsCard}>
           <View style={styles.totalRow}>
@@ -343,6 +421,15 @@ export default function IngredientCheckoutScreen() {
           </Button>
         </View>
       ) : null}
+
+      <ShoppingNotesSheet
+        visible={notesSheetOpen}
+        value={displayedNotes}
+        onChange={setShoppingNotes}
+        onClose={() => setNotesSheetOpen(false)}
+        readOnly={notesReadOnly}
+        title={notesReadOnly ? 'Shopping notes' : 'Shopping notes (optional)'}
+      />
     </View>
   );
 }
@@ -380,18 +467,44 @@ const styles = StyleSheet.create({
   mealHeader: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    gap: 8,
+  },
+  mealHeaderText: { flex: 1 },
+  mealHeaderEnd: {
+    alignItems: 'flex-end',
+    gap: 4,
   },
   mealDay: { color: GRAY_600, fontSize: 12, marginBottom: 2 },
   mealName: { fontSize: 16, fontWeight: '600', color: CHEF_GREY },
+  mealIngredientMeta: {
+    fontSize: 12,
+    color: GRAY_600,
+    marginTop: 6,
+  },
   mealSubtotal: { fontSize: 14, fontWeight: '600', color: CHEF_GREEN },
+  ingredientsList: {
+    marginTop: 16,
+    paddingTop: 14,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e7eb',
+  },
+  ingredientsListLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: CHEF_GREY,
+    marginBottom: 10,
+  },
   ingredientRow: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 8,
+    gap: 8,
+  },
+  ingredientRowBorder: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#e5e7eb',
-    gap: 8,
+    marginTop: 4,
+    paddingTop: 12,
   },
   ingredientText: { flex: 1 },
   ingredientName: { fontSize: 14, color: CHEF_GREY, fontWeight: '500' },
@@ -422,6 +535,47 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 18,
   },
+  notesCard: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    padding: 14,
+    marginBottom: 12,
+  },
+  notesTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: CHEF_GREY,
+    marginBottom: 6,
+  },
+  notesHint: {
+    fontSize: 13,
+    color: GRAY_600,
+    lineHeight: 18,
+    marginBottom: 10,
+  },
+  notesPreview: {
+    fontSize: 14,
+    color: CHEF_GREY,
+    lineHeight: 20,
+    marginBottom: 10,
+  },
+  notesEmpty: {
+    fontSize: 14,
+    color: GRAY_400,
+    fontStyle: 'italic',
+    marginBottom: 10,
+  },
+  notesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e7eb',
+  },
+  notesBtnText: { fontSize: 14, fontWeight: '600', color: CHEF_ORANGE },
   totalsCard: {
     backgroundColor: GRAY_100,
     borderRadius: 16,

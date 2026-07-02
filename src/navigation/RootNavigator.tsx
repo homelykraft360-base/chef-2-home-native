@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux';
 import BookingScreen from '../screens/BookingScreen';
 import IngredientCheckoutScreen from '../screens/IngredientCheckoutScreen';
 import IngredientReceiptScreen from '../screens/IngredientReceiptScreen';
+import PaymentHistoryScreen from '../screens/PaymentHistoryScreen';
 import { isAuthenticated } from '../store/authSlice';
 import AuthStack from './AuthStack';
 import { StackScreenHeader } from './appHeader';
@@ -44,6 +45,15 @@ export default function RootNavigator() {
             options={{
               headerShown: true,
               title: 'Receipt',
+              header: (props) => <StackScreenHeader {...props} />,
+            }}
+          />
+          <Stack.Screen
+            name="PaymentHistory"
+            component={PaymentHistoryScreen}
+            options={{
+              headerShown: true,
+              title: 'Payment history',
               header: (props) => <StackScreenHeader {...props} />,
             }}
           />

@@ -399,6 +399,9 @@ export interface MealPlanIngredientBreakdown {
   payableTotalKobo: number;
   paymentStatus: IngredientPaymentStatus;
   invoiceId?: number | null;
+  shoppingNotes?: string | null;
+  shoppingNotesOps?: string | null;
+  effectiveShoppingNotes?: string | null;
 }
 
 export interface IngredientExclusionInput {

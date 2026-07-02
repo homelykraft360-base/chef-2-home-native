@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Build app launcher icons from the Chef2Home logo (orange bg + padded mark).
 
-Outputs: app-icon.png, app-icon-adaptive-foreground.png, favicon.png — not `icon.png`,
-which is used in the in-app header and should stay separate.
+Outputs: app-icon.png, app-icon-adaptive-foreground.png, favicon.png, splash-icon.png
+— not `icon.png`, which is used in the in-app header and should stay separate.
 
 Requires: pip install Pillow
 Example:
@@ -47,6 +47,9 @@ def composite_icons(logo_path: Path, out_dir: Path, orange: tuple[int, int, int]
     app_icon = base.convert("RGB")
     app_icon.save(out_dir / "app-icon.png", "PNG", optimize=True)
 
+    # Splash — same centered logo on brand orange (Expo splash.image + backgroundColor)
+    app_icon.save(out_dir / "splash-icon.png", "PNG", optimize=True)
+
     # Android adaptive foreground (transparent outside mark)
     fg = Image.new("RGBA", (CANVAS, CANVAS), (0, 0, 0, 0))
     fg.paste(logo_s, (x0, y0), logo_s)
@@ -79,7 +82,7 @@ def main() -> None:
     if not args.logo.is_file():
         raise SystemExit(f"Logo not found: {args.logo}")
     composite_icons(args.logo, args.out_dir, orange)
-    print(f"Wrote app-icon, adaptive foreground, favicon → {args.out_dir}")
+    print(f"Wrote app-icon, splash-icon, adaptive foreground, favicon → {args.out_dir}")
 
 
 if __name__ == "__main__":

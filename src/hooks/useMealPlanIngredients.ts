@@ -114,7 +114,9 @@ export default function useMealPlanIngredients(planId: number | null) {
   );
 
   const checkout = useCallback(
-    async (): Promise<IngredientCheckoutResponse | null> => {
+    async (
+      shoppingNotes?: string | null,
+    ): Promise<IngredientCheckoutResponse | null> => {
       if (!planId || !breakdown) return null;
       setPaying(true);
       setError(null);
@@ -124,6 +126,7 @@ export default function useMealPlanIngredients(planId: number | null) {
       const { error: syncErr } = await updateIngredientExclusions(
         planId,
         exclusions,
+        shoppingNotes,
       );
       if (syncErr) {
         // 409 here usually means a paid/pending invoice already exists for

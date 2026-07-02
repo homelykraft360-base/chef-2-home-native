@@ -18,6 +18,7 @@ import {
   dayOptions,
   planColorScheme,
   timeOptionsWithLabels,
+  visitTimeSlotRange,
 } from '../../constants/booking';
 import { CHEF_GREEN, CHEF_GREY, CHEF_ORANGE, GRAY_600 } from '../../constants/theme';
 import useCreateInvoice from '../../hooks/useCreateInvoice';
@@ -85,12 +86,6 @@ const CATEGORY_ORDER = ['starter', 'main', 'protein', 'side', 'swallow'] as cons
 
 function dayLabel(day: string) {
   return `${day.charAt(0).toUpperCase()}${day.slice(1)}s`;
-}
-
-function getTimeMapping(value: string): string {
-  if (value === 'morning') return '(8am - 9am)';
-  if (value === 'afternoon') return '(2pm - 3pm)';
-  return '--';
 }
 
 export default function BookingScreen() {
@@ -482,22 +477,40 @@ export default function BookingScreen() {
           </View>
 
           <Text style={styles.label}>Weekly sessions</Text>
-          <View style={styles.counterRow}>
-            <Button
-              mode="outlined"
+          <View style={styles.counterBar}>
+            <TouchableOpacity
+              style={[
+                styles.counterControl,
+                logistics.weeklySessionsCount <= 1 && styles.counterControlDisabled,
+              ]}
               disabled={logistics.weeklySessionsCount <= 1}
               onPress={() => handleWeeklySessionsDelta(-1)}
             >
-              −
-            </Button>
-            <Text style={styles.counterVal}>{logistics.weeklySessionsCount}</Text>
-            <Button
-              mode="contained"
+              <Text style={styles.counterControlText}>−</Text>
+            </TouchableOpacity>
+            <View style={styles.counterCenter}>
+              <Text style={styles.counterVal}>{logistics.weeklySessionsCount}</Text>
+              <Text style={styles.counterHint}>Up to {planCap} per week</Text>
+            </View>
+            <TouchableOpacity
+              style={[
+                styles.counterControl,
+                styles.counterControlPrimary,
+                logistics.weeklySessionsCount >= planCap &&
+                  styles.counterControlDisabled,
+              ]}
               disabled={logistics.weeklySessionsCount >= planCap}
               onPress={() => handleWeeklySessionsDelta(1)}
             >
-              +
-            </Button>
+              <Text
+                style={[
+                  styles.counterControlText,
+                  styles.counterControlTextPrimary,
+                ]}
+              >
+                +
+              </Text>
+            </TouchableOpacity>
           </View>
 
           <Text style={styles.label}>Visit days (select {dayPickCap})</Text>
@@ -532,19 +545,19 @@ export default function BookingScreen() {
               <Text style={styles.labelSmall}>
                 Time on {day.charAt(0).toUpperCase() + day.slice(1)}
               </Text>
-              <View style={styles.rowWrap}>
-                {timeOptionsWithLabels
-                  .filter((o) => o.value !== '')
-                  .map((opt) => (
-                    <Button
+              {timeOptionsWithLabels
+                .filter((o) => o.value !== '')
+                .map((opt) => {
+                  const selected =
+                    logistics.selectedDayAndTime[day] === opt.value;
+                  return (
+                    <TouchableOpacity
                       key={opt.value}
-                      mode={
-                        logistics.selectedDayAndTime[day] === opt.value
-                          ? 'contained'
-                          : 'outlined'
-                      }
-                      compact
-                      style={styles.timeChip}
+                      style={[
+                        styles.timeOption,
+                        selected && styles.timeOptionSelected,
+                      ]}
+                      activeOpacity={0.85}
                       onPress={() =>
                         setLogistics((p) => ({
                           ...p,
@@ -555,10 +568,25 @@ export default function BookingScreen() {
                         }))
                       }
                     >
-                      {opt.value === 'morning' ? 'Morning' : 'Afternoon'}
-                    </Button>
-                  ))}
-              </View>
+                      <Text
+                        style={[
+                          styles.timeOptionLabel,
+                          selected && styles.timeOptionLabelSelected,
+                        ]}
+                      >
+                        {opt.label}
+                      </Text>
+                      <View
+                        style={[
+                          styles.radioOuter,
+                          selected && styles.radioOuterSelected,
+                        ]}
+                      >
+                        {selected ? <View style={styles.radioInner} /> : null}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
             </View>
           ))}
         </View>
@@ -627,7 +655,7 @@ export default function BookingScreen() {
                   logistics.selectedDays
                     .map(
                       (d) =>
-                        `${d} ${getTimeMapping(logistics.selectedDayAndTime[d] ?? '')}`,
+                        `${d} (${visitTimeSlotRange(logistics.selectedDayAndTime[d] ?? '')})`,
                     )
                     .join(', ') || '--',
                 ],
@@ -748,7 +776,6 @@ const styles = StyleSheet.create({
   },
   labelSmall: { fontWeight: '600', color: GRAY_600, marginBottom: 6 },
   row: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
-  rowWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   flexBtn: { flex: 1, minWidth: 120 },
   locBtn: { minWidth: 0, flex: 1 },
   planCard: {
@@ -807,13 +834,48 @@ const styles = StyleSheet.create({
   },
   checkboxChecked: { backgroundColor: CHEF_ORANGE, borderColor: CHEF_ORANGE },
   checkLabel: { flex: 1, fontSize: 14, color: CHEF_GREY },
-  counterRow: {
+  counterBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    marginVertical: 8,
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    backgroundColor: '#fff',
+    padding: 8,
+    marginBottom: 12,
+    gap: 8,
   },
-  counterVal: { fontSize: 20, fontWeight: '700', minWidth: 32, textAlign: 'center' },
+  counterControl: {
+    flex: 1,
+    minHeight: 48,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  counterControlPrimary: {
+    borderColor: CHEF_ORANGE,
+    backgroundColor: CHEF_ORANGE,
+  },
+  counterControlDisabled: { opacity: 0.45 },
+  counterControlText: {
+    fontSize: 24,
+    fontWeight: '600',
+    color: CHEF_GREY,
+    lineHeight: 28,
+  },
+  counterControlTextPrimary: { color: '#fff' },
+  counterCenter: {
+    flex: 1.2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
+  counterVal: { fontSize: 22, fontWeight: '700', color: CHEF_GREY },
+  counterHint: { fontSize: 11, color: GRAY_600, marginTop: 2, textAlign: 'center' },
   dayRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -825,7 +887,26 @@ const styles = StyleSheet.create({
   dayText: { fontSize: 15, textTransform: 'capitalize', color: CHEF_GREY },
   dayTextDisabled: { color: '#9ca3af' },
   timeBlock: { marginTop: 12 },
-  timeChip: { marginRight: 4, marginBottom: 4 },
+  timeOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    marginBottom: 8,
+    backgroundColor: '#fff',
+    gap: 12,
+  },
+  timeOptionSelected: {
+    borderColor: CHEF_ORANGE,
+    backgroundColor: '#fff7ed',
+  },
+  timeOptionLabel: { flex: 1, fontSize: 15, color: CHEF_GREY },
+  timeOptionLabelSelected: { fontWeight: '600' },
   inputBlock: { marginBottom: 16 },
   input: {
     borderWidth: 1,

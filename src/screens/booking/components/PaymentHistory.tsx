@@ -85,10 +85,31 @@ function rowDate(item: InvoiceHistoryItem) {
 type Props = {
   loading?: boolean;
   invoices: InvoiceHistoryItem[];
+  /** When set, only the first N invoices are shown (e.g. home preview). */
+  limit?: number;
+  /** Shows a "View all" control when there are more invoices than `limit`. */
+  showViewAll?: boolean;
 };
 
-export default function PaymentHistory({ loading, invoices }: Props) {
+export default function PaymentHistory({
+  loading,
+  invoices,
+  limit,
+  showViewAll = false,
+}: Props) {
   const navigation = useNavigation();
+  const visibleInvoices =
+    limit != null ? invoices.slice(0, limit) : invoices;
+  const hasMore = limit != null && invoices.length > limit;
+
+  const goToFullHistory = () => {
+    (
+      navigation as unknown as {
+        navigate: (name: 'PaymentHistory') => void;
+      }
+    ).navigate('PaymentHistory');
+  };
+
   if (loading) {
     return (
       <Card style={styles.card}>
@@ -120,7 +141,7 @@ export default function PaymentHistory({ loading, invoices }: Props) {
           </View>
         ) : (
           <View style={styles.list}>
-            {invoices.map((item, index) => {
+            {visibleInvoices.map((item, index) => {
               const v = statusVisual(item.status);
               const ingredientReceipt =
                 isWeeklyIngredientInvoice(item) && item.status === 'paid';
@@ -164,6 +185,22 @@ export default function PaymentHistory({ loading, invoices }: Props) {
             })}
           </View>
         )}
+
+        {showViewAll && hasMore ? (
+          <TouchableOpacity
+            style={styles.viewAllBtn}
+            onPress={goToFullHistory}
+            accessibilityRole="button"
+            accessibilityLabel="View all payment history"
+          >
+            <Text style={styles.viewAllText}>View all</Text>
+            <MaterialCommunityIcons
+              name="chevron-right"
+              size={20}
+              color={CHEF_GREEN}
+            />
+          </TouchableOpacity>
+        ) : null}
       </Card.Content>
     </Card>
   );
@@ -232,5 +269,20 @@ const styles = StyleSheet.create({
     color: CHEF_GREY,
     fontSize: 15,
     textAlign: 'right',
+  },
+  viewAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    marginTop: 16,
+    paddingVertical: 12,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e7eb',
+  },
+  viewAllText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: CHEF_GREEN,
   },
 });

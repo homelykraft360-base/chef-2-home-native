@@ -8,7 +8,6 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -21,6 +20,7 @@ import {
   fetchMealPlansInRange,
   updateMealPlan,
 } from '../api/mealPlanApi';
+import ShoppingNotesSheet from '../components/ShoppingNotesSheet';
 import { fetchMeals } from '../api/mealsApi';
 import {
   CHEF_GREEN,
@@ -155,6 +155,10 @@ export default function MealsScreen() {
   const [activeDay, setActiveDay] = useState<DayOfWeek | null>(null);
   const [applyToAll, setApplyToAll] = useState(false);
   const [shoppingNotes, setShoppingNotes] = useState('');
+  const [notesSheetOpen, setNotesSheetOpen] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const planDayMap = useMemo(() => {
     const map = new Map<DayOfWeek, MealPlanDay>();
@@ -184,6 +188,24 @@ export default function MealsScreen() {
     }
     return sections;
   }, [meals]);
+
+  const displaySections = useMemo(
+    () =>
+      mealSections.map((section) => ({
+        ...section,
+        data: collapsedSections.has(section.title) ? [] : section.data,
+      })),
+    [mealSections, collapsedSections],
+  );
+
+  const toggleSection = useCallback((title: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      return next;
+    });
+  }, []);
 
   const isActive = subscription?.status === 'active';
 
@@ -247,8 +269,7 @@ export default function MealsScreen() {
     mealPlanIdForReview != null &&
     (canReviewSelectedWeek || unpaidPastIngredientWeek);
 
-  const ingredientsPaidForWeek =
-    mealPlan?.ingredientPaymentStatus === 'paid';
+  const ingredientsPaidForWeek = mealPlan?.ingredientPaymentStatus === 'paid';
 
   useEffect(() => {
     if (mealPlan?.ingredientPaymentStatus === 'paid' && applyToAll) {
@@ -551,30 +572,47 @@ export default function MealsScreen() {
           ) : null}
         </View>
 
-        {!ingredientsPaidForWeek ? (
-          <View style={styles.notesBox}>
-            <Text style={styles.notesLabel}>Shopping notes (optional)</Text>
-            <Text style={styles.notesHint}>
-              Brand preferences, substitutes, or items to avoid — saved for this week.
-            </Text>
-            <TextInput
-              style={styles.notesInput}
-              value={shoppingNotes}
-              onChangeText={setShoppingNotes}
-              placeholder="e.g. Use Gino tomato paste, no cilantro"
-              placeholderTextColor={GRAY_400}
-              multiline
-              maxLength={2000}
-              editable={!savingAny && !activeLocked}
+        {(!ingredientsPaidForWeek || mealPlan?.effectiveShoppingNotes) ? (
+          <TouchableOpacity
+            style={styles.notesBtn}
+            onPress={() => setNotesSheetOpen(true)}
+            disabled={savingAny}
+          >
+            <MaterialCommunityIcons
+              name="note-text-outline"
+              size={20}
+              color={CHEF_ORANGE}
             />
-          </View>
-        ) : mealPlan?.effectiveShoppingNotes ? (
-          <View style={styles.notesBox}>
-            <Text style={styles.notesLabel}>Shopping notes</Text>
-            <Text style={styles.notesReadonly}>{mealPlan.effectiveShoppingNotes}</Text>
-          </View>
+            <Text style={styles.notesBtnText}>
+              {ingredientsPaidForWeek ? 'View shopping notes' : 'Shopping notes'}
+            </Text>
+            {!ingredientsPaidForWeek && shoppingNotes.trim() ? (
+              <View style={styles.notesBadge}>
+                <Text style={styles.notesBadgeText}>Added</Text>
+              </View>
+            ) : null}
+            <MaterialCommunityIcons
+              name="chevron-up"
+              size={20}
+              color={GRAY_600}
+              style={styles.notesBtnChevron}
+            />
+          </TouchableOpacity>
         ) : null}
       </View>
+
+      <ShoppingNotesSheet
+        visible={notesSheetOpen}
+        value={
+          ingredientsPaidForWeek
+            ? mealPlan?.effectiveShoppingNotes ?? ''
+            : shoppingNotes
+        }
+        onChange={setShoppingNotes}
+        onClose={() => setNotesSheetOpen(false)}
+        readOnly={ingredientsPaidForWeek}
+        title={ingredientsPaidForWeek ? 'Shopping notes' : 'Shopping notes (optional)'}
+      />
 
       {isLoading && !meals ? (
         <View style={styles.centered}>
@@ -587,15 +625,46 @@ export default function MealsScreen() {
       ) : (
         <View style={styles.listWrap}>
           <SectionList
-            sections={mealSections}
+            sections={displaySections}
             keyExtractor={(m) => String(m.id)}
             stickySectionHeadersEnabled
             contentContainerStyle={styles.listContent}
-            renderSectionHeader={({ section }) => (
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionHeaderText}>{section.title}</Text>
-              </View>
-            )}
+            renderSectionHeader={({ section }) => {
+              const collapsed = collapsedSections.has(section.title);
+              const fullSection = mealSections.find((s) => s.title === section.title);
+              const mealCount = fullSection?.data.length ?? 0;
+              const selectedCount =
+                fullSection?.data.filter((meal) => activeSelection.has(meal.id))
+                  .length ?? 0;
+
+              return (
+                <TouchableOpacity
+                  style={styles.sectionHeader}
+                  onPress={() => toggleSection(section.title)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: !collapsed }}
+                  accessibilityLabel={`${capitalizeString(section.title)} meals`}
+                >
+                  <View style={styles.sectionHeaderText}>
+                    <Text style={styles.sectionHeaderTitle}>
+                      {capitalizeString(section.title)}
+                    </Text>
+                    <Text style={styles.sectionHeaderMeta}>
+                      {mealCount} {mealCount === 1 ? 'meal' : 'meals'}
+                      {selectedCount > 0
+                        ? ` · ${selectedCount} selected`
+                        : ''}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name={collapsed ? 'chevron-down' : 'chevron-up'}
+                    size={22}
+                    color={GRAY_600}
+                  />
+                </TouchableOpacity>
+              );
+            }}
             renderItem={({ item }) => {
               const isSelected = activeSelection.has(item.id);
               const capReached = activeSelection.size >= MAX_PER_DAY;
@@ -672,7 +741,11 @@ export default function MealsScreen() {
                 onPress={onConfirm}
                 loading={savingAny}
                 disabled={savingAny}
-                style={[styles.primaryBtn, styles.footerBtn]}
+                style={[
+                  styles.primaryBtn,
+                  styles.footerBtn,
+                  !canOpenIngredientCheckout && styles.footerBtnFull,
+                ]}
               >
                 Save
               </Button>
@@ -767,35 +840,54 @@ const styles = StyleSheet.create({
   },
   lockedTag: { fontSize: 12, color: ERROR_RED, marginTop: 4, fontWeight: '600' },
   sourceTag: { fontSize: 12, color: GRAY_600, marginTop: 4, fontStyle: 'italic' },
-  notesBox: { marginTop: 12, paddingHorizontal: 4 },
-  notesLabel: { fontSize: 14, fontWeight: '600', color: CHEF_GREY },
-  notesHint: { fontSize: 12, color: GRAY_600, marginTop: 4, marginBottom: 8 },
-  notesInput: {
-    minHeight: 72,
+  notesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    marginHorizontal: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    borderRadius: 10,
-    padding: 10,
-    fontSize: 14,
-    color: CHEF_GREY,
     backgroundColor: '#fff',
-    textAlignVertical: 'top',
   },
-  notesReadonly: { fontSize: 14, color: GRAY_600, marginTop: 6 },
+  notesBtnText: { flex: 1, fontSize: 14, fontWeight: '600', color: CHEF_GREY },
+  notesBtnChevron: { marginLeft: 'auto' },
+  notesBadge: {
+    backgroundColor: '#fff7ed',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  notesBadgeText: { fontSize: 11, fontWeight: '700', color: CHEF_ORANGE },
   listWrap: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 },
   sectionHeader: {
-    backgroundColor: '#fafafa',
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginTop: 8,
+    marginBottom: 4,
   },
-  sectionHeaderText: {
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+  sectionHeaderText: { flex: 1 },
+  sectionHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: CHEF_GREY,
+    textTransform: 'capitalize',
+  },
+  sectionHeaderMeta: {
+    fontSize: 12,
     color: GRAY_600,
+    marginTop: 2,
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -870,6 +962,7 @@ const styles = StyleSheet.create({
   outlinedBtn: { borderRadius: 12, borderColor: CHEF_ORANGE },
   footerRow: { flexDirection: 'row', gap: 8 },
   footerBtn: { flex: 1 },
+  footerBtnFull: { flex: 1, width: '100%' },
   chipDisabled: { opacity: 0.45 },
   errorText: { color: ERROR_RED, textAlign: 'center' },
   mutedText: { color: GRAY_600 },

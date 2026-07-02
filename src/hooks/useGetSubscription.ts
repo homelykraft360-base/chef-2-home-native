@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { fetchCurrentUserSubscription } from '../api/subscriptionApi';
 import type { Subscription } from '../types';
@@ -8,18 +8,19 @@ export default function useGetSubscription() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      const { error: err, subscription: sub } =
-        await fetchCurrentUserSubscription();
-      if (err) setError(String(err));
-      else setSubscription(sub ?? null);
-      setLoading(false);
-    };
-    fetchData();
+  const refetch = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    const { error: err, subscription: sub } =
+      await fetchCurrentUserSubscription();
+    if (err) setError(String(err));
+    else setSubscription(sub ?? null);
+    setLoading(false);
   }, []);
 
-  return { subscription, loading, error };
+  useEffect(() => {
+    void refetch();
+  }, [refetch]);
+
+  return { subscription, loading, error, refetch };
 }

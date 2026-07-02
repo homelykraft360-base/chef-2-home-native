@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -16,10 +17,12 @@ import dayjs from 'dayjs';
 
 import useGetCurrentUserDetails from '../hooks/useGetCurrentUserDetails';
 import useGetInvoiceHistory from '../hooks/useGetInvoiceHistory';
+import useGetMealPlanForWeek from '../hooks/useGetMealPlanForWeek';
 import useGetSubscription from '../hooks/useGetSubscription';
 import { currentUser, setUser } from '../store/authSlice';
 import {
   CHEF_GREEN,
+  CHEF_GREY,
   CHEF_ORANGE,
   ERROR_RED,
   GRAY_100,
@@ -33,6 +36,8 @@ import {
   formatToMoney,
   getInitials,
 } from '../utils/string.utils';
+import { mealPlanHasSelections } from '../utils/mealPlan.utils';
+import { currentWeekStart, weekRangeLabel } from '../utils/week';
 
 import PaymentHistory from './booking/components/PaymentHistory';
 
@@ -41,15 +46,40 @@ export default function HomeScreen() {
   const dispatch = useDispatch();
   const current = useSelector(currentUser);
 
-  const { subscription, error: subscriptionError, loading: subscriptionLoading } =
+  const { subscription, error: subscriptionError, loading: subscriptionLoading, refetch: refetchSubscription } =
     useGetSubscription();
-  const { user, error: userError, loading: userLoading } =
+  const { user, error: userError, loading: userLoading, refetch: refetchUser } =
     useGetCurrentUserDetails();
   const {
     invoices,
     loading: invoicesLoading,
     error: invoicesError,
+    refetch: refetchInvoices,
   } = useGetInvoiceHistory();
+
+  const currentWeek = currentWeekStart();
+  const subscriptionActive = subscription?.status === 'active';
+  const {
+    mealPlan: currentWeekMealPlan,
+    loading: mealPlanLoading,
+    refetch: refetchMealPlan,
+  } = useGetMealPlanForWeek(subscriptionActive ? currentWeek : null);
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refetchSubscription(),
+        refetchUser(),
+        refetchInvoices(),
+        refetchMealPlan(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchInvoices, refetchMealPlan, refetchSubscription, refetchUser]);
 
   useEffect(() => {
     if (user) dispatch(setUser(user));
@@ -74,13 +104,34 @@ export default function HomeScreen() {
   const goToSettings = () => {
     (navigation as { navigate: (screen: string) => void }).navigate('Settings');
   };
+  const goToMeals = () => {
+    (navigation as { navigate: (screen: string) => void }).navigate('Meals');
+  };
+
+  const hasWeeklyMealSelections = mealPlanHasSelections(currentWeekMealPlan);
 
   return (
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={CHEF_ORANGE}
+          colors={[CHEF_ORANGE]}
+          progressBackgroundColor="#fff"
+        />
+      }
     >
+      {refreshing ? (
+        <View style={styles.refreshBanner}>
+          <ActivityIndicator size="small" color={CHEF_ORANGE} />
+          <Text style={styles.refreshBannerText}>Refreshing your data…</Text>
+        </View>
+      ) : null}
+
       <Text style={styles.welcome}>
         {current?.firstName
           ? `Welcome back, ${current.firstName}`
@@ -130,8 +181,24 @@ export default function HomeScreen() {
         )}
       </View>
 
+      {subscriptionActive ? (
+        <View style={styles.cardRow}>
+          <MealPlanPromptCard
+            hasSelections={hasWeeklyMealSelections}
+            loading={mealPlanLoading}
+            weekLabel={weekRangeLabel(currentWeek)}
+            onPress={goToMeals}
+          />
+        </View>
+      ) : null}
+
       <View style={styles.cardRow}>
-        <PaymentHistory invoices={invoices} loading={invoicesLoading} />
+        <PaymentHistory
+          invoices={invoices}
+          loading={invoicesLoading}
+          limit={3}
+          showViewAll
+        />
       </View>
 
       {/* User info — 1 column */}
@@ -157,6 +224,63 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </ScrollView>
+  );
+}
+
+function MealPlanPromptCard({
+  hasSelections,
+  loading,
+  weekLabel,
+  onPress,
+}: {
+  hasSelections: boolean;
+  loading: boolean;
+  weekLabel: string;
+  onPress: () => void;
+}) {
+  if (loading) {
+    return (
+      <Card style={styles.card}>
+        <Card.Content style={styles.mealPromptLoading}>
+          <ActivityIndicator size="small" color={CHEF_ORANGE} />
+        </Card.Content>
+      </Card>
+    );
+  }
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+      <Card
+        style={[
+          styles.card,
+          styles.mealPromptCard,
+          !hasSelections && styles.mealPromptCardAccent,
+        ]}
+      >
+        <Card.Content style={styles.mealPromptContent}>
+          <View style={styles.mealPromptIconWrap}>
+            <Icon
+              source="silverware-fork-knife"
+              size={22}
+              color={hasSelections ? CHEF_GREEN : CHEF_ORANGE}
+            />
+          </View>
+          <View style={styles.mealPromptTextWrap}>
+            <Text style={styles.mealPromptTitle}>
+              {hasSelections
+                ? 'View / select meals'
+                : 'Select your meals for this week'}
+            </Text>
+            <Text style={styles.mealPromptSub}>
+              {hasSelections
+                ? `Week of ${weekLabel} — tap to update your plan`
+                : `Week of ${weekLabel} — choose what your chef will prepare`}
+            </Text>
+          </View>
+          <Icon source="chevron-right" size={24} color={GRAY_600} />
+        </Card.Content>
+      </Card>
+    </TouchableOpacity>
   );
 }
 
@@ -288,6 +412,20 @@ function UserInfoCard({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   content: { padding: 24, paddingBottom: 48 },
+  refreshBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginBottom: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  refreshBannerText: { fontSize: 14, fontWeight: '600', color: CHEF_ORANGE },
   welcome: {
     fontSize: 22,
     fontWeight: '700',
@@ -298,6 +436,41 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 24,
     overflow: 'hidden',
+  },
+  mealPromptCard: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  mealPromptCardAccent: {
+    borderColor: CHEF_ORANGE,
+    backgroundColor: '#fff8f0',
+  },
+  mealPromptContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  mealPromptIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mealPromptTextWrap: { flex: 1, minWidth: 0 },
+  mealPromptTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: CHEF_GREY,
+    marginBottom: 4,
+  },
+  mealPromptSub: { fontSize: 13, color: GRAY_600, lineHeight: 18 },
+  mealPromptLoading: {
+    minHeight: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   loadingBlock: {
     minHeight: 160,
