@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -40,8 +40,10 @@ import type {
   MealPlanDay,
   MealPlanDayInput,
   MealSelectionSource,
+  MealSize,
   Subscription,
 } from '../types';
+import { DEFAULT_MEAL_SIZE, MEAL_SIZE_OPTIONS } from '../types';
 import {
   addWeeks,
   currentWeekStart,
@@ -59,6 +61,8 @@ const UNCATEGORIZED = 'other';
 type VisitingDayEntry = { day: DayOfWeek; timeOfDay: string };
 
 type DaySelections = Record<DayOfWeek, Set<number>>;
+
+type DayMealSizes = Record<DayOfWeek, Record<number, MealSize>>;
 
 const SOURCE_LABEL: Record<MealSelectionSource, string | null> = {
   user: null,
@@ -93,6 +97,28 @@ function emptySelections(visitingDays: VisitingDayEntry[]): DaySelections {
     acc[day] = new Set<number>();
     return acc;
   }, {} as DaySelections);
+}
+
+function emptyMealSizes(visitingDays: VisitingDayEntry[]): DayMealSizes {
+  return visitingDays.reduce((acc, { day }) => {
+    acc[day] = {};
+    return acc;
+  }, {} as DayMealSizes);
+}
+
+function seedMealSizesFromPlan(
+  visitingDays: VisitingDayEntry[],
+  planDays: MealPlanDay[],
+): DayMealSizes {
+  const next = emptyMealSizes(visitingDays);
+  for (const pd of planDays) {
+    for (const meal of pd.meals) {
+      if (next[pd.dayOfWeek]) {
+        next[pd.dayOfWeek][meal.id] = meal.mealSize ?? DEFAULT_MEAL_SIZE;
+      }
+    }
+  }
+  return next;
 }
 
 function seedSelectionsFromPlan(
@@ -141,6 +167,7 @@ export default function MealsScreen() {
 
   const { saveMealPlan, loading: saving } = useSaveMealPlan();
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [reviewNavigating, setReviewNavigating] = useState(false);
 
   const [meals, setMeals] = useState<Meal[] | null>(null);
   const [mealsError, setMealsError] = useState<string | null>(null);
@@ -152,6 +179,7 @@ export default function MealsScreen() {
   );
 
   const [selections, setSelections] = useState<DaySelections>({} as DaySelections);
+  const [mealSizes, setMealSizes] = useState<DayMealSizes>({} as DayMealSizes);
   const [activeDay, setActiveDay] = useState<DayOfWeek | null>(null);
   const [applyToAll, setApplyToAll] = useState(false);
   const [shoppingNotes, setShoppingNotes] = useState('');
@@ -159,6 +187,7 @@ export default function MealsScreen() {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
     () => new Set(),
   );
+  const collapsedInitialized = useRef(false);
 
   const planDayMap = useMemo(() => {
     const map = new Map<DayOfWeek, MealPlanDay>();
@@ -207,6 +236,12 @@ export default function MealsScreen() {
     });
   }, []);
 
+  useEffect(() => {
+    if (mealSections.length === 0 || collapsedInitialized.current) return;
+    collapsedInitialized.current = true;
+    setCollapsedSections(new Set(mealSections.map((s) => s.title)));
+  }, [mealSections]);
+
   const isActive = subscription?.status === 'active';
 
   useEffect(() => {
@@ -233,13 +268,18 @@ export default function MealsScreen() {
   useEffect(() => {
     if (!visitingDays.length) {
       setSelections({} as DaySelections);
+      setMealSizes({} as DayMealSizes);
       setActiveDay(null);
       return;
     }
     const seeded = mealPlan
       ? seedSelectionsFromPlan(visitingDays, mealPlan.days)
       : emptySelections(visitingDays);
+    const seededSizes = mealPlan
+      ? seedMealSizesFromPlan(visitingDays, mealPlan.days)
+      : emptyMealSizes(visitingDays);
     setSelections(seeded);
+    setMealSizes(seededSizes);
     setActiveDay((prev) => (prev && seeded[prev] ? prev : visitingDays[0].day));
   }, [mealPlan, visitingDays]);
 
@@ -281,25 +321,60 @@ export default function MealsScreen() {
     setSelections((prev) => {
       const current = prev[day] ?? new Set<number>();
       const next = new Set(current);
+      let sizesUpdate: 'add' | 'remove' | null = null;
       if (next.has(mealId)) {
         next.delete(mealId);
+        sizesUpdate = 'remove';
       } else if (next.size < MAX_PER_DAY) {
         next.add(mealId);
+        sizesUpdate = 'add';
+      }
+      if (sizesUpdate === 'remove') {
+        setMealSizes((sizesPrev) => {
+          const daySizes = { ...(sizesPrev[day] ?? {}) };
+          delete daySizes[mealId];
+          return { ...sizesPrev, [day]: daySizes };
+        });
+      } else if (sizesUpdate === 'add') {
+        setMealSizes((sizesPrev) => ({
+          ...sizesPrev,
+          [day]: {
+            ...(sizesPrev[day] ?? {}),
+            [mealId]: sizesPrev[day]?.[mealId] ?? DEFAULT_MEAL_SIZE,
+          },
+        }));
       }
       return { ...prev, [day]: next };
     });
   }, []);
 
+  const setMealSize = useCallback(
+    (day: DayOfWeek, mealId: number, size: MealSize) => {
+      setMealSizes((prev) => ({
+        ...prev,
+        [day]: { ...(prev[day] ?? {}), [mealId]: size },
+      }));
+    },
+    [],
+  );
+
   const buildPayloadForWeek = useCallback(
     (weekStart: string): MealPlanDayInput[] =>
       visitingDays
         .filter(({ day, timeOfDay }) => !dayLocked(weekStart, day, timeOfDay))
-        .map(({ day }) => ({
-          dayOfWeek: day,
-          mealIds: Array.from(selections[day] ?? []),
-        }))
+        .map(({ day }) => {
+          const mealIds = Array.from(selections[day] ?? []);
+          return {
+            dayOfWeek: day,
+            mealIds,
+            mealNotes: mealIds.map((mealId) => ({
+              mealId,
+              mealSize: mealSizes[day]?.[mealId] ?? DEFAULT_MEAL_SIZE,
+            })),
+          };
+        })
         .filter((d) => d.mealIds.length > 0),
-    [visitingDays, selections, dayLocked],
+    [visitingDays, selections, mealSizes, dayLocked],
   );
 
   const saveSingleWeek = () => {
@@ -402,6 +477,71 @@ export default function MealsScreen() {
     }
   };
 
+  const goToReview = async () => {
+    if (!mealPlanIdForReview) return;
+
+    const navigateToReview = () => {
+      (
+        navigation as unknown as {
+          navigate: (
+            name: 'IngredientCheckout',
+            params: { mealPlanId: number; refreshToken: number },
+          ) => void;
+        }
+      ).navigate('IngredientCheckout', {
+        mealPlanId: mealPlanIdForReview,
+        refreshToken: Date.now(),
+      });
+    };
+
+    const hasMealsToReview =
+      (mealPlan?.days.some((d) => d.meals.length > 0) ?? false) ||
+      visitingDays.some(({ day }) => (selections[day]?.size ?? 0) > 0);
+
+    if (ingredientsPaidForWeek) {
+      navigateToReview();
+      return;
+    }
+
+    const payloadDays = buildPayloadForWeek(selectedWeek);
+
+    if (payloadDays.length === 0) {
+      if (hasMealsToReview) {
+        navigateToReview();
+        return;
+      }
+      Alert.alert(
+        'Nothing to review',
+        'Pick at least one meal for this week first.',
+      );
+      return;
+    }
+
+    setReviewNavigating(true);
+    try {
+      const result = mealPlan?.id
+        ? await updateMealPlan(mealPlan.id, {
+            days: payloadDays,
+            shoppingNotes: shoppingNotes.trim() || null,
+          })
+        : await createMealPlan({
+            weekStart: selectedWeek,
+            days: payloadDays,
+            shoppingNotes: shoppingNotes.trim() || null,
+          });
+
+      if (result.error) {
+        Alert.alert('Could not save meals', String(result.error));
+        return;
+      }
+
+      refetchPlan();
+      navigateToReview();
+    } finally {
+      setReviewNavigating(false);
+    }
+  };
+
   const goToBooking = () => {
     const parent = navigation.getParent();
     if (parent) {
@@ -467,7 +607,7 @@ export default function MealsScreen() {
     ingredientsPaidForWeek;
   const activePlanDay = planDayMap.get(activeDayInfo.day);
   const activeSourceLabel = activePlanDay && SOURCE_LABEL[activePlanDay.source];
-  const savingAny = saving || bulkSaving;
+  const savingAny = saving || bulkSaving || reviewNavigating;
 
   return (
     <View style={styles.container}>
@@ -674,47 +814,86 @@ export default function MealsScreen() {
               const capReached = activeSelection.size >= MAX_PER_DAY;
               const isDisabled =
                 activeLocked || (!isSelected && capReached) || savingAny;
+              const currentSize =
+                mealSizes[activeDayInfo.day]?.[item.id] ?? DEFAULT_MEAL_SIZE;
               return (
-                <TouchableOpacity
+                <View
                   style={[
                     styles.row,
                     isSelected && styles.rowSelected,
-                    isDisabled && styles.rowDisabled,
+                    isDisabled && !isSelected && styles.rowDisabled,
                   ]}
-                  onPress={() => toggleMeal(activeDayInfo.day, item.id)}
-                  disabled={isDisabled}
-                  activeOpacity={0.7}
                 >
-                  {item.imageUrl ? (
-                    <Image source={{ uri: item.imageUrl }} style={styles.thumb} />
-                  ) : (
-                    <View style={[styles.thumb, styles.thumbPlaceholder]}>
-                      <MaterialCommunityIcons
-                        name="silverware-fork-knife"
-                        size={26}
-                        color={CHEF_ORANGE}
-                      />
-                    </View>
-                  )}
-                  <View style={styles.rowBody}>
-                    <Text style={styles.mealName} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    {item.description ? (
-                      <Text style={styles.mealDesc} numberOfLines={2}>
-                        {item.description}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <View
-                    style={[
-                      styles.checkbox,
-                      isSelected && styles.checkboxSelected,
-                    ]}
+                  <TouchableOpacity
+                    style={styles.rowMain}
+                    onPress={() => toggleMeal(activeDayInfo.day, item.id)}
+                    disabled={isDisabled}
+                    activeOpacity={0.7}
                   >
-                    {isSelected ? <Text style={styles.checkmark}>✓</Text> : null}
-                  </View>
-                </TouchableOpacity>
+                    {item.imageUrl ? (
+                      <Image source={{ uri: item.imageUrl }} style={styles.thumb} />
+                    ) : (
+                      <View style={[styles.thumb, styles.thumbPlaceholder]}>
+                        <MaterialCommunityIcons
+                          name="silverware-fork-knife"
+                          size={26}
+                          color={CHEF_ORANGE}
+                        />
+                      </View>
+                    )}
+                    <View style={styles.rowBody}>
+                      <Text style={styles.mealName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      {item.description ? (
+                        <Text style={styles.mealDesc} numberOfLines={2}>
+                          {item.description}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View
+                      style={[
+                        styles.checkbox,
+                        isSelected && styles.checkboxSelected,
+                      ]}
+                    >
+                      {isSelected ? <Text style={styles.checkmark}>✓</Text> : null}
+                    </View>
+                  </TouchableOpacity>
+                  {isSelected ? (
+                    <View style={styles.sizeRow}>
+                      <Text style={styles.sizeLabel}>Size</Text>
+                      <View style={styles.sizeChips}>
+                        {MEAL_SIZE_OPTIONS.map((size) => {
+                          const selected = currentSize === size;
+                          return (
+                            <TouchableOpacity
+                              key={size}
+                              style={[
+                                styles.sizeChip,
+                                selected && styles.sizeChipSelected,
+                              ]}
+                              onPress={() =>
+                                setMealSize(activeDayInfo.day, item.id, size)
+                              }
+                              disabled={activeLocked || savingAny}
+                            >
+                              <Text
+                                style={[
+                                  styles.sizeChipText,
+                                  selected && styles.sizeChipTextSelected,
+                                ]}
+                              >
+                                {size}
+                                {size === DEFAULT_MEAL_SIZE ? ' (Default)' : ''}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
               );
             }}
             ListEmptyComponent={
@@ -759,18 +938,8 @@ export default function MealsScreen() {
                 mode="outlined"
                 textColor={CHEF_ORANGE}
                 disabled={savingAny}
-                onPress={() =>
-                  (
-                    navigation as unknown as {
-                      navigate: (
-                        name: 'IngredientCheckout',
-                        params: { mealPlanId: number },
-                      ) => void;
-                    }
-                  ).navigate('IngredientCheckout', {
-                    mealPlanId: mealPlanIdForReview,
-                  })
-                }
+                loading={reviewNavigating}
+                onPress={goToReview}
                 style={[styles.outlinedBtn, styles.footerBtn]}
               >
                 Review
@@ -918,8 +1087,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#fff',
     padding: 12,
     borderRadius: 16,
@@ -927,8 +1094,49 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
   },
+  rowMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   rowSelected: { borderColor: CHEF_ORANGE, backgroundColor: '#fff8f0' },
   rowDisabled: { opacity: 0.45 },
+  sizeRow: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e7eb',
+  },
+  sizeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: GRAY_600,
+    marginBottom: 8,
+  },
+  sizeChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sizeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+  },
+  sizeChipSelected: {
+    borderColor: CHEF_ORANGE,
+    backgroundColor: '#fff8f0',
+  },
+  sizeChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: GRAY_600,
+  },
+  sizeChipTextSelected: {
+    color: CHEF_ORANGE,
+  },
   thumb: {
     width: 56,
     height: 56,

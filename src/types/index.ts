@@ -305,11 +305,24 @@ export type DayOfWeek =
 
 export type MealSelectionSource = 'user' | 'prior_week' | 'admin_default';
 
+export type MealSize = '1.5L' | '3L' | '5L';
+
+export const MEAL_SIZE_OPTIONS: MealSize[] = ['1.5L', '3L', '5L'];
+
+export const DEFAULT_MEAL_SIZE: MealSize = '3L';
+
+export interface PlannedMeal extends Meal {
+  mealSize?: MealSize;
+  ingredientNotes?: string | null;
+  ingredientNotesOps?: string | null;
+  effectiveIngredientNotes?: string | null;
+}
+
 export interface MealPlanDay {
   id: number;
   dayOfWeek: DayOfWeek;
   source: MealSelectionSource;
-  meals: Meal[];
+  meals: PlannedMeal[];
 }
 
 export interface MealPlan {
@@ -325,9 +338,16 @@ export interface MealPlan {
   effectiveShoppingNotes?: string | null;
 }
 
+export interface MealPlanDayMealNotesInput {
+  mealId: number;
+  mealSize?: MealSize;
+  ingredientNotes?: string | null;
+}
+
 export interface MealPlanDayInput {
   dayOfWeek: DayOfWeek;
   mealIds: number[];
+  mealNotes?: MealPlanDayMealNotesInput[];
 }
 
 export interface MealPlanCreateRequest {
@@ -385,6 +405,7 @@ export interface MealPlanMealRow {
   mealId: number;
   dayOfWeek: DayOfWeek;
   mealName: string;
+  mealSize?: MealSize;
   mealImageUrl?: string | null;
   ingredients: MealPlanIngredientRow[];
   mealSubtotalKobo: number;

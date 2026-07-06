@@ -33,7 +33,10 @@ function exclusionsFromBreakdown(
 }
 
 /** Per-meal toggle state. Exclusions sync to backend once at checkout. */
-export default function useMealPlanIngredients(planId: number | null) {
+export default function useMealPlanIngredients(
+  planId: number | null,
+  refreshKey?: number,
+) {
   const [breakdown, setBreakdown] =
     useState<MealPlanIngredientBreakdown | null>(null);
   const [loading, setLoading] = useState(false);
@@ -57,7 +60,7 @@ export default function useMealPlanIngredients(planId: number | null) {
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   const toggleIngredient = useCallback(
     (

@@ -26,7 +26,7 @@ export type RootStackParamList = {
   Auth: undefined;
   Main: undefined;
   Booking: undefined;
-  IngredientCheckout: { mealPlanId: number };
+  IngredientCheckout: { mealPlanId: number; refreshToken?: number };
   IngredientReceipt: { invoiceId: number };
   PaymentHistory: undefined;
   SupportTickets: undefined;

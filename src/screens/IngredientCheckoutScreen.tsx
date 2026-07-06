@@ -36,7 +36,7 @@ import { formatToMoney } from '../utils/string.utils';
 import { weekRangeLabel } from '../utils/week';
 
 type IngredientCheckoutRouteParams = {
-  IngredientCheckout: { mealPlanId: number };
+  IngredientCheckout: { mealPlanId: number; refreshToken?: number };
 };
 
 function dayLabel(day: string) {
@@ -82,6 +82,10 @@ function IngredientRow({
   disabled?: boolean;
   showTopBorder?: boolean;
 }) {
+  const unitLabel = row.unit ?? 'unit';
+  const unitCostLabel = formatToMoney((row.unitCostKobo / 100).toFixed(2));
+  const lineTotalLabel = formatToMoney((row.lineTotalKobo / 100).toFixed(2));
+
   return (
     <View
       style={[styles.ingredientRow, showTopBorder && styles.ingredientRowBorder]}
@@ -95,12 +99,23 @@ function IngredientRow({
         >
           {row.name}
         </Text>
-        {row.quantity ? (
-          <Text style={styles.ingredientMeta}>
-            {row.quantity} {row.unit ?? ''}
-          </Text>
-        ) : null}
+        <Text
+          style={[
+            styles.ingredientMeta,
+            row.isExcluded && styles.ingredientMetaExcluded,
+          ]}
+        >
+          {row.quantity} {unitLabel} · {unitCostLabel}/{unitLabel}
+        </Text>
       </View>
+      <Text
+        style={[
+          styles.ingredientLineTotal,
+          row.isExcluded && styles.ingredientLineTotalExcluded,
+        ]}
+      >
+        {lineTotalLabel}
+      </Text>
       <IngredientToggle
         isExcluded={row.isExcluded}
         disabled={disabled}
@@ -124,54 +139,74 @@ function MealCard({
   ) => void;
   disabled?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
   const ingredientCount = meal.ingredients.length;
+  const ingredientLabel =
+    ingredientCount === 1 ? 'ingredient' : 'ingredients';
 
   return (
     <View style={styles.mealCard}>
-      <TouchableOpacity
-        style={styles.mealHeader}
-        onPress={() => setExpanded((open) => !open)}
-        activeOpacity={0.7}
-        accessibilityRole="button"
-        accessibilityState={{ expanded }}
-        accessibilityLabel={`${meal.mealName} ingredients`}
-      >
+      <View style={styles.mealHeaderTop}>
         <View style={styles.mealHeaderText}>
           <Text style={styles.mealDay}>{dayLabel(meal.dayOfWeek)}</Text>
-          <Text style={styles.mealName}>{meal.mealName}</Text>
-          <Text style={styles.mealIngredientMeta}>
-            {ingredientCount}{' '}
-            {ingredientCount === 1 ? 'ingredient' : 'ingredients'}
+          <Text style={styles.mealName}>
+            {meal.mealName}
+            {meal.mealSize ? (
+              <Text style={styles.mealSize}> · {meal.mealSize}</Text>
+            ) : null}
           </Text>
         </View>
-        <View style={styles.mealHeaderEnd}>
-          <Text style={styles.mealSubtotal}>
-            {formatToMoney((meal.mealSubtotalKobo / 100).toFixed(2))}
-          </Text>
-          <MaterialCommunityIcons
-            name={expanded ? 'chevron-up' : 'chevron-down'}
-            size={22}
-            color={GRAY_600}
-          />
-        </View>
-      </TouchableOpacity>
-      {expanded ? (
-        <View style={styles.ingredientsList}>
-          <Text style={styles.ingredientsListLabel}>Ingredients</Text>
-          {meal.ingredients.map((ing, index) => (
-            <IngredientRow
-              key={`${meal.mealPlanDayId}:${meal.mealId}:${ing.ingredientId}`}
-              row={ing}
-              disabled={disabled}
-              showTopBorder={index > 0}
-              onToggle={(ingredientId, reason) =>
-                onToggle(meal.mealPlanDayId, meal.mealId, ingredientId, reason)
-              }
-            />
-          ))}
-        </View>
-      ) : null}
+        <Text style={styles.mealSubtotal}>
+          {formatToMoney((meal.mealSubtotalKobo / 100).toFixed(2))}
+        </Text>
+      </View>
+
+      <View style={styles.mealExpandArea}>
+        {expanded ? (
+          <>
+            <TouchableOpacity
+              style={styles.mealExpandPrompt}
+              onPress={() => setExpanded(false)}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: true }}
+              accessibilityLabel={`Hide ${meal.mealName} ingredients`}
+            >
+              <Text style={styles.mealExpandTitle}>Click to hide ingredients</Text>
+              <Text style={styles.mealExpandMeta}>
+                {ingredientCount} {ingredientLabel} selected
+              </Text>
+            </TouchableOpacity>
+            <View style={styles.ingredientsList}>
+              {meal.ingredients.map((ing, index) => (
+                <IngredientRow
+                  key={`${meal.mealPlanDayId}:${meal.mealId}:${ing.ingredientId}`}
+                  row={ing}
+                  disabled={disabled}
+                  showTopBorder={index > 0}
+                  onToggle={(ingredientId, reason) =>
+                    onToggle(meal.mealPlanDayId, meal.mealId, ingredientId, reason)
+                  }
+                />
+              ))}
+            </View>
+          </>
+        ) : (
+          <TouchableOpacity
+            style={styles.mealExpandPrompt}
+            onPress={() => setExpanded(true)}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: false }}
+            accessibilityLabel={`View ${meal.mealName} ingredients`}
+          >
+            <Text style={styles.mealExpandTitle}>Click to view ingredients</Text>
+            <Text style={styles.mealExpandMeta}>
+              {ingredientCount} {ingredientLabel} selected
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
     </View>
   );
 }
@@ -179,7 +214,7 @@ function MealCard({
 export default function IngredientCheckoutScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<IngredientCheckoutRouteParams, 'IngredientCheckout'>>();
-  const { mealPlanId } = route.params ?? { mealPlanId: 0 };
+  const { mealPlanId, refreshToken } = route.params ?? { mealPlanId: 0 };
   const { popup } = usePaystack();
   const [paystackResumeCode, setPaystackResumeCode] = useState<string | null>(null);
   const [shoppingNotes, setShoppingNotes] = useState('');
@@ -193,7 +228,7 @@ export default function IngredientCheckoutScreen() {
     toggleIngredient,
     checkout,
     refetch,
-  } = useMealPlanIngredients(mealPlanId);
+  } = useMealPlanIngredients(mealPlanId, refreshToken);
 
   const disabled = useMemo(
     () =>
@@ -331,8 +366,9 @@ export default function IngredientCheckoutScreen() {
         )}
         {breakdown.paymentStatus !== 'paid' && !breakdown.cutoffPassed ? (
           <Text style={styles.disclaimerBanner}>
-            Tick the checkbox next to any ingredient you already have to exclude
-            it. We'll only charge you for what we'll buy.
+            Ingredient amounts and prices reflect the size you selected for each
+            meal. Tick the checkbox next to any ingredient you already have to
+            exclude it — we'll only charge you for what we'll buy.
           </Text>
         ) : null}
 
@@ -466,35 +502,41 @@ const styles = StyleSheet.create({
     padding: 14,
     marginBottom: 12,
   },
-  mealHeader: {
+  mealHeaderTop: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 8,
+    justifyContent: 'space-between',
+    gap: 12,
+    marginBottom: 12,
   },
-  mealHeaderText: { flex: 1 },
-  mealHeaderEnd: {
-    alignItems: 'flex-end',
-    gap: 4,
-  },
+  mealHeaderText: { flex: 1, minWidth: 0 },
   mealDay: { color: GRAY_600, fontSize: 12, marginBottom: 2 },
   mealName: { fontSize: 16, fontWeight: '600', color: CHEF_GREY },
-  mealIngredientMeta: {
-    fontSize: 12,
-    color: GRAY_600,
-    marginTop: 6,
-  },
+  mealSize: { fontSize: 14, fontWeight: '600', color: GRAY_600 },
   mealSubtotal: { fontSize: 14, fontWeight: '600', color: CHEF_GREEN },
-  ingredientsList: {
-    marginTop: 16,
-    paddingTop: 14,
+  mealExpandArea: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: '#e5e7eb',
+    paddingTop: 12,
   },
-  ingredientsListLabel: {
-    fontSize: 13,
+  mealExpandPrompt: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  mealExpandTitle: {
+    fontSize: 14,
     fontWeight: '600',
-    color: CHEF_GREY,
-    marginBottom: 10,
+    color: CHEF_ORANGE,
+    textAlign: 'center',
+  },
+  mealExpandMeta: {
+    fontSize: 12,
+    color: GRAY_600,
+    marginTop: 4,
+    textAlign: 'center',
+  },
+  ingredientsList: {
+    paddingTop: 4,
   },
   ingredientRow: {
     flexDirection: 'row',
@@ -515,6 +557,19 @@ const styles = StyleSheet.create({
     textDecorationLine: 'line-through',
   },
   ingredientMeta: { fontSize: 12, color: GRAY_600, marginTop: 2 },
+  ingredientMetaExcluded: { color: GRAY_400 },
+  ingredientLineTotal: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: CHEF_GREY,
+    minWidth: 72,
+    textAlign: 'right',
+    fontVariant: ['tabular-nums'],
+  },
+  ingredientLineTotalExcluded: {
+    color: GRAY_400,
+    textDecorationLine: 'line-through',
+  },
   weekHeading: {
     fontSize: 18,
     fontWeight: '700',
