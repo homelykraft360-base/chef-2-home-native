@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 import { fetchSupportTicket } from '../api/supportTicketApi';
+import { onSupportTicketOpened } from '../support/supportUnread';
 import type { SupportTicket } from '../types';
 
 export default function useGetSupportTicket(ticketId: number) {
@@ -14,7 +15,12 @@ export default function useGetSupportTicket(ticketId: number) {
     setError(null);
     const { ticket: data, error: err } = await fetchSupportTicket(ticketId);
     if (err) setError(String(err));
-    else setTicket(data ?? null);
+    else {
+      setTicket(data ?? null);
+      if (data) {
+        await onSupportTicketOpened();
+      }
+    }
     setLoading(false);
   }, [ticketId]);
 

@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { fetchSupportTicketsUnreadSummary } from '../api/supportTicketApi';
+import {
+  refreshSupportUnreadState,
+  subscribeSupportUnread,
+  type SupportUnreadState,
+} from '../support/supportUnread';
 
 export default function useGetSupportTicketsUnread() {
   const [unreadCount, setUnreadCount] = useState(0);
@@ -8,22 +12,24 @@ export default function useGetSupportTicketsUnread() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const applyState = useCallback((next: SupportUnreadState) => {
+    setUnreadCount(next.unreadCount);
+    setHasUnread(next.hasUnread);
+  }, []);
+
   const refetch = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { unreadCount: count, hasUnread: unread, error: err } =
-      await fetchSupportTicketsUnreadSummary();
-    if (err) setError(String(err));
-    else {
-      setUnreadCount(count);
-      setHasUnread(unread);
-    }
+    const result = await refreshSupportUnreadState();
+    if (result.error) setError(String(result.error));
     setLoading(false);
   }, []);
 
   useEffect(() => {
+    const unsubscribe = subscribeSupportUnread(applyState);
     refetch();
-  }, [refetch]);
+    return unsubscribe;
+  }, [applyState, refetch]);
 
   return { unreadCount, hasUnread, loading, error, refetch };
 }

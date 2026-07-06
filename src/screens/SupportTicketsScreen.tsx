@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Button } from 'react-native-paper';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 import CreateSupportTicketSheet from '../components/CreateSupportTicketSheet';
@@ -24,6 +24,7 @@ import {
 import useCreateSupportTicket from '../hooks/useCreateSupportTicket';
 import useGetSupportTickets from '../hooks/useGetSupportTickets';
 import type { RootStackParamList } from '../navigation/types';
+import { applyTicketReadOptimistically } from '../support/supportUnread';
 import type { TicketStatus } from '../types';
 import { formatDate } from '../utils/string.utils';
 
@@ -55,6 +56,12 @@ export default function SupportTicketsScreen() {
     if (!error) return;
     Alert.alert('Could not load tickets', error);
   }, [error]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch]),
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -128,9 +135,12 @@ export default function SupportTicketsScreen() {
               <TouchableOpacity
                 key={ticket.id}
                 style={styles.card}
-                onPress={() =>
-                  navigation.navigate('SupportTicketDetail', { ticketId: ticket.id })
-                }
+                onPress={() => {
+                  if (ticket.hasUnread) {
+                    applyTicketReadOptimistically(true);
+                  }
+                  navigation.navigate('SupportTicketDetail', { ticketId: ticket.id });
+                }}
                 activeOpacity={0.7}
               >
                 <View style={styles.cardHeader}>
