@@ -246,6 +246,7 @@ export type UserUpdateRequest = {
   email: string;
   firstName: string;
   lastName: string;
+  phoneNumber?: string;
   address: Omit<Address, 'country'>;
 };
 
@@ -441,4 +442,59 @@ export interface InvoiceIngredientBreakdown {
   paidAt?: string | null;
   amount: number;
   lines: InvoiceIngredientLine[];
+}
+
+export type TicketStatus = 'open' | 'closed';
+
+export interface SupportTicketMessage {
+  id: number;
+  authorUserId: number;
+  authorName: string;
+  isStaff: boolean;
+  body: string;
+  createdAt: string;
+}
+
+export interface SupportTicketSummary {
+  id: number;
+  title: string;
+  status: TicketStatus;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  hasUnread?: boolean;
+}
+
+export interface SupportTicketUnreadSummary {
+  unreadCount: number;
+  hasUnread: boolean;
+}
+
+export interface SupportTicket {
+  id: number;
+  userId: number;
+  title: string;
+  status: TicketStatus;
+  createdAt: string;
+  updatedAt: string;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  customerPhone?: string | null;
+  messages: SupportTicketMessage[];
+}
+
+export interface SupportTicketsListResponse {
+  tickets: SupportTicketSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface SupportTicketCreateRequest {
+  title: string;
+  message: string;
+}
+
+export interface SupportTicketMessageCreateRequest {
+  message: string;
 }

@@ -9,18 +9,59 @@ import type { RootState } from '../store';
 
 import { platformTag, registerForPushNotifications } from './pushRegistration';
 
-function navigateToMeals(navigation: { navigate: (name: string) => void }) {
+type TabNavigation = {
+  navigate: (name: string) => void;
+  getParent?: () => { navigate: (name: string, params?: object) => void } | undefined;
+};
+
+function navigateToMeals(navigation: TabNavigation) {
   navigation.navigate('Meals');
+}
+
+function navigateToSupport(
+  navigation: TabNavigation,
+  ticketId?: number,
+) {
+  const parent = navigation.getParent?.();
+  if (!parent) return;
+  if (ticketId) {
+    parent.navigate('SupportTicketDetail', { ticketId });
+  } else {
+    parent.navigate('SupportTickets');
+  }
+}
+
+function handleSupportPushData(
+  navigation: TabNavigation,
+  data: Record<string, unknown> | undefined,
+) {
+  if (!data) return false;
+  const screen = data.screen;
+  if (screen === 'SupportTickets') {
+    navigateToSupport(navigation);
+    return true;
+  }
+  if (screen === 'SupportTicketDetail') {
+    const rawId = data.ticketId ?? data.ticket_id;
+    const ticketId = Number(rawId);
+    if (Number.isFinite(ticketId) && ticketId > 0) {
+      navigateToSupport(navigation, ticketId);
+      return true;
+    }
+    navigateToSupport(navigation);
+    return true;
+  }
+  return false;
 }
 
 /**
  * Wired once at the top of the authenticated tree. Registers the device's FCM token
  * whenever we have an auth token, mirrors foreground FCM into local notifications,
- * and deep-links taps (FCM + expo-notifications) to the Meals tab.
+ * and deep-links notification taps to the relevant screen.
  */
 export default function useRegisterPushOnLogin() {
   const authToken = useSelector((s: RootState) => s.auth.token);
-  const navigation = useNavigation();
+  const navigation = useNavigation<TabNavigation>();
 
   useEffect(() => {
     if (!authToken) return;
@@ -61,23 +102,30 @@ export default function useRegisterPushOnLogin() {
     messaging()
       .getInitialNotification()
       .then((remoteMessage) => {
-        if (remoteMessage?.data?.screen === 'Meals') {
-          navigateToMeals(navigation as { navigate: (name: string) => void });
+        const data = remoteMessage?.data as Record<string, unknown> | undefined;
+        if (handleSupportPushData(navigation, data)) return;
+        if (data?.screen === 'Meals') {
+          navigateToMeals(navigation);
         }
       })
       .catch(() => undefined);
 
     const unsubOpen = messaging().onNotificationOpenedApp((remoteMessage) => {
-      if (remoteMessage?.data?.screen === 'Meals') {
-        navigateToMeals(navigation as { navigate: (name: string) => void });
+      const data = remoteMessage?.data as Record<string, unknown> | undefined;
+      if (handleSupportPushData(navigation, data)) return;
+      if (data?.screen === 'Meals') {
+        navigateToMeals(navigation);
       }
     });
 
     const subExpo = Notifications.addNotificationResponseReceivedListener(
       (response) => {
-        const screen = response.notification.request.content.data?.screen;
-        if (screen === 'Meals') {
-          navigateToMeals(navigation as { navigate: (name: string) => void });
+        const data = response.notification.request.content.data as
+          | Record<string, unknown>
+          | undefined;
+        if (handleSupportPushData(navigation, data)) return;
+        if (data?.screen === 'Meals') {
+          navigateToMeals(navigation);
         }
       },
     );

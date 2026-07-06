@@ -45,6 +45,8 @@ import {
 } from '../../utils/subscriptionPlan.utils';
 
 import PricingBreakdownCard from './components/PricingBreakdownCard';
+import SubscriptionContactSheet from '../../components/SubscriptionContactSheet';
+import { userNeedsContactDetails } from '../../utils/user.utils';
 
 const initialLogistics: LogisticsProps = {
   location: '',
@@ -92,7 +94,7 @@ export default function BookingScreen() {
   const navigation = useNavigation();
   const { popup } = usePaystack();
   const { plans, loading: loadingPlans } = useGetSubscriptionPlans();
-  const { user } = useGetCurrentUserDetails();
+  const { user, refetch: refetchUser } = useGetCurrentUserDetails();
   const { createInvoice, loading: creatingInvoice } = useCreateInvoice();
 
   const [step, setStep] = useState(0);
@@ -101,6 +103,8 @@ export default function BookingScreen() {
   const [preferences, setPreferences] =
     useState<PreferenceProps>(initialPreference);
   const [menuPlan, setMenuPlan] = useState<SubscriptionPlan | null>(null);
+  const [contactSheetOpen, setContactSheetOpen] = useState(false);
+  const [resumePaymentAfterContact, setResumePaymentAfterContact] = useState(false);
 
   const loading = loadingPlans;
   const readyToPay = step === 4;
@@ -228,7 +232,7 @@ export default function BookingScreen() {
     [popup, selectedPlan, user, logistics],
   );
 
-  const handleCreateSubscription = () => {
+  const proceedToPayment = useCallback(() => {
     if (!selectedPlan) return;
     if (!hasPayEmail) {
       Alert.alert(
@@ -250,7 +254,41 @@ export default function BookingScreen() {
       },
       onError: (err) => Alert.alert('Booking', String(err)),
     });
+  }, [
+    createInvoice,
+    handleInitiatePayment,
+    hasPayEmail,
+    logistics,
+    preferences,
+    selectedPlan,
+  ]);
+
+  const handleCreateSubscription = () => {
+    if (!selectedPlan || !user) return;
+    if (userNeedsContactDetails(user)) {
+      setResumePaymentAfterContact(true);
+      setContactSheetOpen(true);
+      return;
+    }
+    proceedToPayment();
   };
+
+  const handleContactSaved = useCallback(async () => {
+    setContactSheetOpen(false);
+    const updated = await refetchUser();
+    if (!resumePaymentAfterContact) return;
+    setResumePaymentAfterContact(false);
+    if (updated && !userNeedsContactDetails(updated)) {
+      proceedToPayment();
+    } else {
+      Alert.alert(
+        'Details incomplete',
+        'Please add your phone number and address to continue.',
+      );
+      setContactSheetOpen(true);
+      setResumePaymentAfterContact(true);
+    }
+  }, [proceedToPayment, refetchUser, resumePaymentAfterContact]);
 
   const monthlyTotalNaira = useMemo(
     () =>
@@ -747,6 +785,18 @@ export default function BookingScreen() {
           </View>
         </View>
       </Modal>
+
+      {user ? (
+        <SubscriptionContactSheet
+          visible={contactSheetOpen}
+          user={user}
+          onClose={() => {
+            setContactSheetOpen(false);
+            setResumePaymentAfterContact(false);
+          }}
+          onSaved={handleContactSaved}
+        />
+      ) : null}
     </ScrollView>
   );
 }

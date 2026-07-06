@@ -584,7 +584,7 @@ export default function MealsScreen() {
               color={CHEF_ORANGE}
             />
             <Text style={styles.notesBtnText}>
-              {ingredientsPaidForWeek ? 'View shopping notes' : 'Shopping notes'}
+              {ingredientsPaidForWeek ? 'View Shopping & Meal Notes' : 'Shopping & Meal Notes'}
             </Text>
             {!ingredientsPaidForWeek && shoppingNotes.trim() ? (
               <View style={styles.notesBadge}>
@@ -611,7 +611,11 @@ export default function MealsScreen() {
         onChange={setShoppingNotes}
         onClose={() => setNotesSheetOpen(false)}
         readOnly={ingredientsPaidForWeek}
-        title={ingredientsPaidForWeek ? 'Shopping notes' : 'Shopping notes (optional)'}
+        title={
+          ingredientsPaidForWeek
+            ? 'Shopping & Meal Notes'
+            : 'Shopping & Meal Notes (optional)'
+        }
       />
 
       {isLoading && !meals ? (

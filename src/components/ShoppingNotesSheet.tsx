@@ -32,7 +32,7 @@ export default function ShoppingNotesSheet({
   onChange,
   onClose,
   readOnly = false,
-  title = 'Shopping notes',
+  title = 'Shopping & Meal Notes',
 }: Props) {
   return (
     <Modal
@@ -55,7 +55,7 @@ export default function ShoppingNotesSheet({
           </Text>
           {readOnly ? (
             <Text style={styles.readonly}>
-              {value.trim() || 'No shopping notes added.'}
+              {value.trim() || 'No Shopping & Meal Notes added.'}
             </Text>
           ) : (
             <TextInput

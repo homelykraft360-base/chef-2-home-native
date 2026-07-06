@@ -5,6 +5,8 @@ import BookingScreen from '../screens/BookingScreen';
 import IngredientCheckoutScreen from '../screens/IngredientCheckoutScreen';
 import IngredientReceiptScreen from '../screens/IngredientReceiptScreen';
 import PaymentHistoryScreen from '../screens/PaymentHistoryScreen';
+import SupportTicketDetailScreen from '../screens/SupportTicketDetailScreen';
+import SupportTicketsScreen from '../screens/SupportTicketsScreen';
 import { isAuthenticated } from '../store/authSlice';
 import AuthStack from './AuthStack';
 import { StackScreenHeader } from './appHeader';
@@ -54,6 +56,24 @@ export default function RootNavigator() {
             options={{
               headerShown: true,
               title: 'Payment history',
+              header: (props) => <StackScreenHeader {...props} />,
+            }}
+          />
+          <Stack.Screen
+            name="SupportTickets"
+            component={SupportTicketsScreen}
+            options={{
+              headerShown: true,
+              title: 'Support',
+              header: (props) => <StackScreenHeader {...props} />,
+            }}
+          />
+          <Stack.Screen
+            name="SupportTicketDetail"
+            component={SupportTicketDetailScreen}
+            options={{
+              headerShown: true,
+              title: 'Ticket',
               header: (props) => <StackScreenHeader {...props} />,
             }}
           />

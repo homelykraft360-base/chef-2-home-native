@@ -346,7 +346,7 @@ export default function IngredientCheckoutScreen() {
         ))}
 
         <View style={styles.notesCard}>
-          <Text style={styles.notesTitle}>Shopping notes</Text>
+          <Text style={styles.notesTitle}>Shopping & Meal Notes</Text>
           <Text style={styles.notesHint}>
             Tell your chef about brands, substitutes, or items to avoid before we
             shop.
@@ -370,10 +370,10 @@ export default function IngredientCheckoutScreen() {
             />
             <Text style={styles.notesBtnText}>
               {notesReadOnly
-                ? 'View shopping notes'
+                ? 'View Shopping & Meal Notes'
                 : shoppingNotes.trim()
-                  ? 'Edit shopping notes'
-                  : 'Add shopping notes'}
+                  ? 'Edit Shopping & Meal Notes'
+                  : 'Add Shopping & Meal Notes'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -428,7 +428,9 @@ export default function IngredientCheckoutScreen() {
         onChange={setShoppingNotes}
         onClose={() => setNotesSheetOpen(false)}
         readOnly={notesReadOnly}
-        title={notesReadOnly ? 'Shopping notes' : 'Shopping notes (optional)'}
+        title={
+          notesReadOnly ? 'Shopping & Meal Notes' : 'Shopping & Meal Notes (optional)'
+        }
       />
     </View>
   );

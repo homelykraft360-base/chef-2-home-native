@@ -10,7 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Button, Card, Icon } from 'react-native-paper';
 import { useDispatch, useSelector } from 'react-redux';
 import dayjs from 'dayjs';
@@ -19,6 +19,7 @@ import useGetCurrentUserDetails from '../hooks/useGetCurrentUserDetails';
 import useGetInvoiceHistory from '../hooks/useGetInvoiceHistory';
 import useGetMealPlanForWeek from '../hooks/useGetMealPlanForWeek';
 import useGetSubscription from '../hooks/useGetSubscription';
+import useGetSupportTicketsUnread from '../hooks/useGetSupportTicketsUnread';
 import { currentUser, setUser } from '../store/authSlice';
 import {
   CHEF_GREEN,
@@ -65,7 +66,19 @@ export default function HomeScreen() {
     refetch: refetchMealPlan,
   } = useGetMealPlanForWeek(subscriptionActive ? currentWeek : null);
 
+  const {
+    hasUnread: hasSupportUnread,
+    unreadCount: supportUnreadCount,
+    refetch: refetchSupportUnread,
+  } = useGetSupportTicketsUnread();
+
   const [refreshing, setRefreshing] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      refetchSupportUnread();
+    }, [refetchSupportUnread]),
+  );
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -75,11 +88,12 @@ export default function HomeScreen() {
         refetchUser(),
         refetchInvoices(),
         refetchMealPlan(),
+        refetchSupportUnread(),
       ]);
     } finally {
       setRefreshing(false);
     }
-  }, [refetchInvoices, refetchMealPlan, refetchSubscription, refetchUser]);
+  }, [refetchInvoices, refetchMealPlan, refetchSubscription, refetchSupportUnread, refetchUser]);
 
   useEffect(() => {
     if (user) dispatch(setUser(user));
@@ -107,10 +121,17 @@ export default function HomeScreen() {
   const goToMeals = () => {
     (navigation as { navigate: (screen: string) => void }).navigate('Meals');
   };
+  const goToSupport = () => {
+    const parent = navigation.getParent();
+    if (parent) {
+      (parent as { navigate: (name: string) => void }).navigate('SupportTickets');
+    }
+  };
 
   const hasWeeklyMealSelections = mealPlanHasSelections(currentWeekMealPlan);
 
   return (
+    <View style={styles.screen}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
@@ -224,6 +245,30 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </ScrollView>
+
+      <TouchableOpacity
+        style={styles.helpFab}
+        onPress={goToSupport}
+        activeOpacity={0.85}
+        accessibilityLabel={
+          hasSupportUnread
+            ? 'Get help, you have support ticket updates'
+            : 'Get help'
+        }
+        accessibilityRole="button"
+      >
+        <Icon source="help-circle" size={26} color="#fff" />
+        {hasSupportUnread ? (
+          <View style={styles.helpFabBadge}>
+            {supportUnreadCount > 1 ? (
+              <Text style={styles.helpFabBadgeText}>
+                {supportUnreadCount > 9 ? '9+' : supportUnreadCount}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+      </TouchableOpacity>
+    </View>
   );
 }
 
@@ -411,7 +456,8 @@ function UserInfoCard({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 24, paddingBottom: 48 },
+  screen: { flex: 1 },
+  content: { padding: 24, paddingBottom: 96 },
   refreshBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -574,4 +620,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   detailValue: { fontSize: 14, color: GRAY_600, flex: 1 },
+  helpFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: CHEF_ORANGE,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  helpFabBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: ERROR_RED,
+    borderWidth: 2,
+    borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+  },
+  helpFabBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 10,
+  },
 });
