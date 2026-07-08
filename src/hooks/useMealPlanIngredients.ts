@@ -109,7 +109,8 @@ export default function useMealPlanIngredients(
           meals,
           grossTotalKobo,
           excludedTotalKobo,
-          payableTotalKobo: grossTotalKobo - excludedTotalKobo,
+          payableTotalKobo:
+            grossTotalKobo - excludedTotalKobo + (prev.serviceChargeKobo ?? 0),
         };
       });
     },

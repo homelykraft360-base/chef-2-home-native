@@ -19,7 +19,10 @@
     "submit:ios": "eas submit --platform ios --latest",
     "submit:android": "eas submit --platform android --latest",
     "version:update": "node scripts/update-mobile-versions.mjs",
-    "version:update:dry-run": "node scripts/update-mobile-versions.mjs --dry-run"
+    "version:update:dry-run": "node scripts/update-mobile-versions.mjs --dry-run",
+    "icons": "bash scripts/generate-android-adaptive-icons.sh",
+    "icons:android": "npm run icons",
+    "prebuild:clean": "expo prebuild --clean"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

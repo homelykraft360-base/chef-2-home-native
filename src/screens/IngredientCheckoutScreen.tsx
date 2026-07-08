@@ -427,6 +427,12 @@ export default function IngredientCheckoutScreen() {
               −{formatToMoney((breakdown.excludedTotalKobo / 100).toFixed(2))}
             </Text>
           </View>
+          <View style={styles.totalRow}>
+            <Text style={styles.totalLabel}>Service charge</Text>
+            <Text style={styles.totalValue}>
+              {formatToMoney((breakdown.serviceChargeKobo / 100).toFixed(2))}
+            </Text>
+          </View>
           <View style={[styles.totalRow, styles.payableRow]}>
             <Text style={styles.payableLabel}>
               {breakdown.paymentStatus === 'paid' ? 'Paid' : 'Payable'}

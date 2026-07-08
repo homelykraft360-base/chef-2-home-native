@@ -60,3 +60,4 @@ coverage/
 # One-off store asset tooling
 .venv-storegen/
 .venv-feature-graphic/
+.venv-icons/

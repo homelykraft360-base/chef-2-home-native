@@ -418,6 +418,7 @@ export interface MealPlanIngredientBreakdown {
   meals: MealPlanMealRow[];
   grossTotalKobo: number;
   excludedTotalKobo: number;
+  serviceChargeKobo: number;
   payableTotalKobo: number;
   paymentStatus: IngredientPaymentStatus;
   invoiceId?: number | null;
