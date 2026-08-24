@@ -1,6 +1,7 @@
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { createNativeStackNavigator, type NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { useSelector } from 'react-redux';
 
+import AcceptInviteScreen from '../screens/accept/AcceptInviteScreen';
 import BookingScreen from '../screens/BookingScreen';
 import IngredientCheckoutScreen from '../screens/IngredientCheckoutScreen';
 import IngredientReceiptScreen from '../screens/IngredientReceiptScreen';
@@ -15,6 +16,14 @@ import type { RootStackParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+const acceptInviteOptions = {
+  headerShown: true,
+  title: 'Join household',
+  header: (props: NativeStackHeaderProps) => (
+    <StackScreenHeader {...props} />
+  ),
+};
+
 export default function RootNavigator() {
   const authenticated = useSelector(isAuthenticated);
 
@@ -23,6 +32,11 @@ export default function RootNavigator() {
       {authenticated ? (
         <>
           <Stack.Screen name="Main" component={MainTabs} />
+          <Stack.Screen
+            name="AcceptInvite"
+            component={AcceptInviteScreen}
+            options={acceptInviteOptions}
+          />
           <Stack.Screen
             name="Booking"
             component={BookingScreen}
@@ -79,7 +93,14 @@ export default function RootNavigator() {
           />
         </>
       ) : (
-        <Stack.Screen name="Auth" component={AuthStack} />
+        <>
+          <Stack.Screen name="Auth" component={AuthStack} />
+          <Stack.Screen
+            name="AcceptInvite"
+            component={AcceptInviteScreen}
+            options={acceptInviteOptions}
+          />
+        </>
       )}
     </Stack.Navigator>
   );

@@ -12,7 +12,7 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Button } from 'react-native-paper';
+import { Button, Snackbar } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 
 import {
@@ -33,6 +33,8 @@ import {
 } from '../constants/theme';
 import useGetMealPlanForWeek from '../hooks/useGetMealPlanForWeek';
 import useGetSubscription from '../hooks/useGetSubscription';
+import useHouseholdEntitlement from '../hooks/useHouseholdEntitlement';
+import useHouseholdMembers from '../hooks/useHouseholdMembers';
 import useSaveMealPlan from '../hooks/useSaveMealPlan';
 import type {
   DayOfWeek,
@@ -137,6 +139,32 @@ function seedSelectionsFromPlan(
 export default function MealsScreen() {
   const navigation = useNavigation();
   const { subscription, loading: subscriptionLoading } = useGetSubscription();
+  const {
+    isPayer,
+    isActiveMember,
+    shouldShowSubscribeCTA,
+    householdManagement,
+  } = useHouseholdEntitlement();
+  const { members } = useHouseholdMembers(isPayer);
+  const [selectedMemberUserId, setSelectedMemberUserId] = useState<number | null>(null);
+  const [quotaSnackbar, setQuotaSnackbar] = useState(false);
+
+  const targetUserId =
+    selectedMemberUserId != null ? selectedMemberUserId : undefined;
+
+  const memberOptions = useMemo(
+    () =>
+      members.filter(
+        (m) => m.role === 'member' && m.status === 'active' && m.userId != null,
+      ),
+    [members],
+  );
+
+  const mealsReadOnly =
+    householdManagement === 'payer_assigns' && isActiveMember;
+
+  const planningForOther =
+    isPayer && selectedMemberUserId != null && householdManagement === 'members_pick';
 
   const weekOptions = useMemo(
     () =>
@@ -163,7 +191,7 @@ export default function MealsScreen() {
     loading: planLoading,
     error: planError,
     refetch: refetchPlan,
-  } = useGetMealPlanForWeek(selectedWeek);
+  } = useGetMealPlanForWeek(selectedWeek, targetUserId);
 
   const { saveMealPlan, loading: saving } = useSaveMealPlan();
   const [bulkSaving, setBulkSaving] = useState(false);
@@ -243,6 +271,14 @@ export default function MealsScreen() {
   }, [mealSections]);
 
   const isActive = subscription?.status === 'active';
+
+  const showQuotaError = (err: string) => {
+    if (err.toLowerCase().includes('quota_exceeded')) {
+      setQuotaSnackbar(true);
+      return;
+    }
+    Alert.alert('Could not save', err);
+  };
 
   useEffect(() => {
     if (!isActive) return;
@@ -394,6 +430,7 @@ export default function MealsScreen() {
         days: payloadDays,
         existingPlanId: mealPlan?.id,
         shoppingNotes: shoppingNotes.trim() || null,
+        targetUserId,
       },
       onSuccess: () => {
         Alert.alert(
@@ -402,7 +439,7 @@ export default function MealsScreen() {
         );
         refetchPlan();
       },
-      onError: (err) => Alert.alert('Could not save', err),
+      onError: showQuotaError,
     });
   };
 
@@ -416,6 +453,7 @@ export default function MealsScreen() {
       const { mealPlans, error: rangeError } = await fetchMealPlansInRange(
         first,
         last,
+        targetUserId,
       );
       if (rangeError) {
         Alert.alert('Could not save', String(rangeError));
@@ -436,12 +474,12 @@ export default function MealsScreen() {
             ? await updateMealPlan(existingId, {
                 days: payloadDays,
                 shoppingNotes: shoppingNotes.trim() || null,
-              })
+              }, targetUserId)
             : await createMealPlan({
                 weekStart: week,
                 days: payloadDays,
                 shoppingNotes: shoppingNotes.trim() || null,
-              });
+              }, targetUserId);
           return { week, skipped: false as const, error: res.error };
         }),
       );
@@ -523,15 +561,15 @@ export default function MealsScreen() {
         ? await updateMealPlan(mealPlan.id, {
             days: payloadDays,
             shoppingNotes: shoppingNotes.trim() || null,
-          })
+          }, targetUserId)
         : await createMealPlan({
             weekStart: selectedWeek,
             days: payloadDays,
             shoppingNotes: shoppingNotes.trim() || null,
-          });
+          }, targetUserId);
 
       if (result.error) {
-        Alert.alert('Could not save meals', String(result.error));
+        showQuotaError(String(result.error));
         return;
       }
 
@@ -558,6 +596,7 @@ export default function MealsScreen() {
   }
 
   if (!isActive) {
+    if (shouldShowSubscribeCTA) {
     return (
       <View style={[styles.centered, styles.padded]}>
         <Image
@@ -572,6 +611,12 @@ export default function MealsScreen() {
         <Button mode="contained" onPress={goToBooking} style={styles.primaryBtn}>
           Start your subscription
         </Button>
+      </View>
+    );
+    }
+    return (
+      <View style={[styles.centered, styles.padded]}>
+        <Text style={styles.gateTitle}>No active subscription</Text>
       </View>
     );
   }
@@ -604,13 +649,71 @@ export default function MealsScreen() {
   const activeSelection = selections[activeDayInfo.day] ?? new Set<number>();
   const activeLocked =
     dayLocked(selectedWeek, activeDayInfo.day, activeDayInfo.timeOfDay) ||
-    ingredientsPaidForWeek;
+    ingredientsPaidForWeek ||
+    mealsReadOnly;
   const activePlanDay = planDayMap.get(activeDayInfo.day);
   const activeSourceLabel = activePlanDay && SOURCE_LABEL[activePlanDay.source];
   const savingAny = saving || bulkSaving || reviewNavigating;
 
   return (
     <View style={styles.container}>
+      {mealsReadOnly ? (
+        <View style={styles.modeBanner}>
+          <Text style={styles.modeBannerText}>
+            Your payer assigns meals for the household.
+          </Text>
+        </View>
+      ) : null}
+      {isPayer && householdManagement === 'payer_assigns' && memberOptions.length > 0 ? (
+        <View style={styles.pickerRow}>
+          <Text style={styles.pickerLabel}>Planning for</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <TouchableOpacity
+              style={[
+                styles.memberChip,
+                selectedMemberUserId == null && styles.memberChipSelected,
+              ]}
+              onPress={() => setSelectedMemberUserId(null)}
+            >
+              <Text
+                style={[
+                  styles.memberChipText,
+                  selectedMemberUserId == null && styles.memberChipTextSelected,
+                ]}
+              >
+                Me
+              </Text>
+            </TouchableOpacity>
+            {memberOptions.map((m) => (
+              <TouchableOpacity
+                key={m.id}
+                style={[
+                  styles.memberChip,
+                  selectedMemberUserId === m.userId && styles.memberChipSelected,
+                ]}
+                onPress={() => setSelectedMemberUserId(m.userId ?? null)}
+              >
+                <Text
+                  style={[
+                    styles.memberChipText,
+                    selectedMemberUserId === m.userId && styles.memberChipTextSelected,
+                  ]}
+                >
+                  {m.inviteEmail?.split('@')[0] ?? m.invitePhone ?? 'Member'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+      {planningForOther ? (
+        <TouchableOpacity
+          style={styles.backToMeals}
+          onPress={() => setSelectedMemberUserId(null)}
+        >
+          <Text style={styles.backToMealsText}>Back to my meals</Text>
+        </TouchableOpacity>
+      ) : null}
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>Plan your meals</Text>
@@ -619,7 +722,7 @@ export default function MealsScreen() {
             <Switch
               value={applyToAll}
               onValueChange={setApplyToAll}
-              disabled={ingredientsPaidForWeek || savingAny}
+              disabled={ingredientsPaidForWeek || savingAny || mealsReadOnly}
               trackColor={{ false: '#d1d5db', true: CHEF_ORANGE }}
               thumbColor="#fff"
             />
@@ -948,12 +1051,51 @@ export default function MealsScreen() {
           </View>
         </View>
       ) : null}
+
+      <Snackbar
+        visible={quotaSnackbar}
+        onDismiss={() => setQuotaSnackbar(false)}
+        duration={3500}
+        style={{ backgroundColor: '#101928' }}
+      >
+        You've reached this week's meal limit. Remove a meal or wait for next week.
+      </Snackbar>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fafafa' },
+  modeBanner: {
+    backgroundColor: '#fff8f0',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#fde68a',
+  },
+  modeBannerText: { fontSize: 14, color: GRAY_600, fontWeight: '600' },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 8,
+  },
+  pickerLabel: { fontSize: 14, fontWeight: '600', color: GRAY_600 },
+  memberChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginRight: 8,
+  },
+  memberChipSelected: { backgroundColor: '#fff8f0', borderColor: CHEF_ORANGE },
+  memberChipText: { fontSize: 14, color: GRAY_600 },
+  memberChipTextSelected: { color: CHEF_ORANGE, fontWeight: '600' },
+  backToMeals: { paddingHorizontal: 16, paddingTop: 8 },
+  backToMealsText: { color: CHEF_ORANGE, fontWeight: '600', fontSize: 14 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   padded: { padding: 24 },
   header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },

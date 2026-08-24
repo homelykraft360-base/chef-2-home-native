@@ -1,4 +1,5 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 
 export type AuthStackParamList = {
   Login: undefined;
@@ -23,8 +24,9 @@ export type MainTabParamList = {
 
 /** Root native stack: auth flow, tab shell, and modal-style app screens */
 export type RootStackParamList = {
-  Auth: undefined;
+  Auth: NavigatorScreenParams<AuthStackParamList>;
   Main: undefined;
+  AcceptInvite: { token?: string };
   Booking: undefined;
   IngredientCheckout: { mealPlanId: number; refreshToken?: number };
   IngredientReceipt: { invoiceId: number };

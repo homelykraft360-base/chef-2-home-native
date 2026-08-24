@@ -20,6 +20,7 @@ import useGetInvoiceHistory from '../hooks/useGetInvoiceHistory';
 import useGetMealPlanForWeek from '../hooks/useGetMealPlanForWeek';
 import useGetSubscription from '../hooks/useGetSubscription';
 import useGetSupportTicketsUnread from '../hooks/useGetSupportTicketsUnread';
+import useHouseholdEntitlement from '../hooks/useHouseholdEntitlement';
 import { currentUser, setUser } from '../store/authSlice';
 import {
   CHEF_GREEN,
@@ -46,6 +47,12 @@ export default function HomeScreen() {
   const navigation = useNavigation();
   const dispatch = useDispatch();
   const current = useSelector(currentUser);
+
+  const {
+    isActiveMember,
+    shouldShowSubscribeCTA,
+    cachedPayerFirstName,
+  } = useHouseholdEntitlement();
 
   const { subscription, error: subscriptionError, loading: subscriptionLoading, refetch: refetchSubscription } =
     useGetSubscription();
@@ -177,10 +184,10 @@ export default function HomeScreen() {
             </Card.Content>
           </Card>
         ) : !subscription ? (
+          shouldShowSubscribeCTA ? (
           <Card style={styles.card}>
             <Card.Content style={styles.emptyBlock}>
               <View style={styles.emptyIconWrap}>
-                {/* <Icon source="silverware-fork-knife" size={48} color={CHEF_ORANGE} /> */}
                 <Image
                   source={require('../../assets/images/utensils.png')}
                   style={{ height: 100 }}
@@ -197,6 +204,14 @@ export default function HomeScreen() {
               </Button>
             </Card.Content>
           </Card>
+          ) : null
+        ) : isActiveMember ? (
+          <HouseholdPlanCard
+            subscription={subscription}
+            payerFirstName={cachedPayerFirstName ?? 'your payer'}
+            onPlanMeals={goToMeals}
+            onViewPlan={goToSubscription}
+          />
         ) : (
           <SubscriptionCard subscription={subscription} onManage={goToSubscription} />
         )}
@@ -326,6 +341,48 @@ function MealPlanPromptCard({
         </Card.Content>
       </Card>
     </TouchableOpacity>
+  );
+}
+
+function HouseholdPlanCard({
+  subscription,
+  payerFirstName,
+  onPlanMeals,
+  onViewPlan,
+}: {
+  subscription: Subscription;
+  payerFirstName: string;
+  onPlanMeals: () => void;
+  onViewPlan: () => void;
+}) {
+  const plan = subscription.subscriptionPlan;
+
+  return (
+    <Card style={[styles.card, styles.subscriptionCard]}>
+      <Card.Content style={styles.subscriptionInner}>
+        <Text style={styles.planLabel}>Household plan</Text>
+        <Text style={styles.planName}>{plan.name ?? '--'}</Text>
+        <Text style={styles.emptySub}>
+          You're on {payerFirstName}'s household plan.
+        </Text>
+        <Text style={[styles.emptySub, { marginTop: 8 }]}>
+          No charge for you — {payerFirstName} stays the billing account.
+        </Text>
+      </Card.Content>
+      <View style={styles.subscriptionActions}>
+        <Button
+          mode="contained"
+          onPress={onPlanMeals}
+          style={[styles.btn, styles.subscriptionManageBtn]}
+          contentStyle={styles.subscriptionManageBtnContent}
+        >
+          Plan your meals
+        </Button>
+        <Button mode="outlined" onPress={onViewPlan} style={styles.btn}>
+          View plan
+        </Button>
+      </View>
+    </Card>
   );
 }
 

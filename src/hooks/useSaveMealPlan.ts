@@ -12,6 +12,7 @@ type SavePayload = {
   days: MealPlanDayInput[];
   existingPlanId?: number;
   shoppingNotes?: string | null;
+  targetUserId?: number;
 };
 
 export default function useSaveMealPlan() {
@@ -24,10 +25,10 @@ export default function useSaveMealPlan() {
       onSuccess,
     }: GenericAPICallbackProps<SavePayload, MealPlan | null>) => {
       setLoading(true);
-      const { existingPlanId, weekStart, days, shoppingNotes } = payload;
+      const { existingPlanId, weekStart, days, shoppingNotes, targetUserId } = payload;
       const result = existingPlanId
-        ? await updateMealPlan(existingPlanId, { days, shoppingNotes })
-        : await createMealPlan({ weekStart, days, shoppingNotes });
+        ? await updateMealPlan(existingPlanId, { days, shoppingNotes }, targetUserId)
+        : await createMealPlan({ weekStart, days, shoppingNotes }, targetUserId);
       if (result.error) {
         onError?.(String(result.error));
       } else {

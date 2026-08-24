@@ -6,13 +6,19 @@ interface UserState {
   user: User | null;
   token: string | null;
   /** Set after login success modal "Book your first Session"; MainTabs switches to this tab then clears */
-  postLoginTab: 'Booking' | null;
+  postLoginTab: 'Booking' | 'AcceptInvite' | null;
+  /** Persisted invite token until address step completes (D-04) */
+  pendingInviteToken: string | null;
+  /** Cached from invite preview for member Home card (no payer GET) */
+  cachedPayerFirstName: string | null;
 }
 
 const initialState: UserState = {
   token: null,
   user: null,
   postLoginTab: null,
+  pendingInviteToken: null,
+  cachedPayerFirstName: null,
 };
 
 export const authSlice = createSlice({
@@ -25,13 +31,24 @@ export const authSlice = createSlice({
     setUser: (state, action: PayloadAction<Nullable<User>>) => {
       state.user = action.payload;
     },
-    setPostLoginTab: (state, action: PayloadAction<'Booking' | null>) => {
+    setPostLoginTab: (
+      state,
+      action: PayloadAction<'Booking' | 'AcceptInvite' | null>,
+    ) => {
       state.postLoginTab = action.payload;
+    },
+    setPendingInviteToken: (state, action: PayloadAction<string | null>) => {
+      state.pendingInviteToken = action.payload;
+    },
+    setCachedPayerFirstName: (state, action: PayloadAction<string | null>) => {
+      state.cachedPayerFirstName = action.payload;
     },
     signOutUser: (state) => {
       state.user = null;
       state.token = null;
       state.postLoginTab = null;
+      state.pendingInviteToken = null;
+      state.cachedPayerFirstName = null;
     },
   },
   selectors: {
@@ -42,7 +59,17 @@ export const authSlice = createSlice({
   },
 });
 
-export const { setToken, setUser, setPostLoginTab, signOutUser } =
-  authSlice.actions;
-export const { currentToken, currentUser, isAuthenticated, postLoginTab } =
-  authSlice.selectors;
+export const {
+  setToken,
+  setUser,
+  setPostLoginTab,
+  setPendingInviteToken,
+  setCachedPayerFirstName,
+  signOutUser,
+} = authSlice.actions;
+export const {
+  currentToken,
+  currentUser,
+  isAuthenticated,
+  postLoginTab,
+} = authSlice.selectors;

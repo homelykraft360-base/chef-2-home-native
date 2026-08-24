@@ -33,6 +33,54 @@ export type SubscriptionStatus =
   | 'paused'
   | 'pending';
 
+export type HouseholdManagement = 'payer_assigns' | 'members_pick';
+
+export type MemberRole = 'payer' | 'member';
+
+export type MemberStatus = 'invited' | 'active' | 'removed';
+
+export interface SubscriptionMember {
+  id: number;
+  subscriptionId: number;
+  userId?: number | null;
+  role: MemberRole | string;
+  status: MemberStatus | string;
+  inviteEmail?: string | null;
+  invitePhone?: string | null;
+  useOwnerAddress: boolean;
+  weeklySessionsQuota?: number | null;
+  weeklyMealSlotsQuota?: number | null;
+}
+
+export interface HouseholdSubscriptionSummary {
+  id: number;
+  householdManagement: HouseholdManagement;
+  weeklySessions: number;
+}
+
+export interface HouseholdListResponse {
+  members: SubscriptionMember[];
+  seatsUsed: number;
+  seatsRemaining: number;
+  seatCap: number;
+  subscription: HouseholdSubscriptionSummary;
+}
+
+export interface InvitePreview {
+  inviterFirstName: string;
+  planName: string;
+}
+
+export interface InviteAcceptAddressPayload {
+  token: string;
+  useOwnerAddress: boolean;
+  streetAddress1?: string;
+  streetAddress2?: string;
+  city?: string;
+  state?: string;
+  visitLocation?: string;
+}
+
 export interface GenericResponse {
   error?: Nullable<string>;
 }
@@ -171,6 +219,7 @@ export interface Subscription {
   additionalNotes?: string;
   visitingDays?: Record<string, string> | string;
   paystackSubscriptionCode?: string;
+  householdManagement?: HouseholdManagement;
 }
 
 export interface SubscriptionCreationRequest {

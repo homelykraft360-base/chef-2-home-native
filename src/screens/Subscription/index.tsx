@@ -10,6 +10,7 @@ import { Switch } from 'react-native-paper';
 
 import useGetPreference from '../../hooks/useGetPreference';
 import useGetSubscription from '../../hooks/useGetSubscription';
+import useHouseholdEntitlement from '../../hooks/useHouseholdEntitlement';
 import useToggleAutoRenew from '../../hooks/useToggleAutoRenew';
 import { formatDate } from '../../utils/string.utils';
 import { capitalizeString } from '../../utils/url.utils';
@@ -23,6 +24,7 @@ export default function SubscriptionScreen() {
   const [modalVisible, setModalVisible] = useState(false);
 
   const { subscription, loading, error } = useGetSubscription();
+  const { isActiveMember, householdManagement } = useHouseholdEntitlement();
   const { preference, loading: loadingPreferences } = useGetPreference();
   const { toggleAutoRenewal, loading: toggling } = useToggleAutoRenew();
 
@@ -115,6 +117,9 @@ export default function SubscriptionScreen() {
         showsVerticalScrollIndicator={false}
       >
         <Text style={styles.title}>Subscription details</Text>
+        {isActiveMember && householdManagement === 'payer_assigns' ? (
+          <Text style={styles.memberBanner}>Your payer manages visit days.</Text>
+        ) : null}
         <View style={styles.card}>
           {items.map((item, index) => (
             <SubscriptionItem
@@ -126,6 +131,8 @@ export default function SubscriptionScreen() {
           ))}
         </View>
 
+        {isActiveMember ? null : (
+          <>
         <Text style={styles.sectionTitle}>Subscription settings</Text>
         <View style={styles.settingsCard}>
           <View style={styles.settingsText}>
@@ -143,10 +150,12 @@ export default function SubscriptionScreen() {
             color={CHEF_ORANGE}
           />
         </View>
+          </>
+        )}
       </ScrollView>
 
       <AutoRenewalModal
-        visible={modalVisible}
+        visible={modalVisible && !isActiveMember}
         onClose={() => setModalVisible(false)}
         onConfirm={handleModalConfirm}
         loading={toggling}
@@ -174,6 +183,12 @@ const styles = StyleSheet.create({
   },
   errorSub: { fontSize: 14, color: '#6b7280', textAlign: 'center' },
   title: { fontSize: 22, fontWeight: '700', marginBottom: 24 },
+  memberBanner: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginTop: -12,
+    marginBottom: 16,
+  },
   card: {
     backgroundColor: '#fff',
     borderRadius: 12,

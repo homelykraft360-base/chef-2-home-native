@@ -4,6 +4,7 @@ import { useNavigation } from '@react-navigation/native';
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
+import useHouseholdEntitlement from '../hooks/useHouseholdEntitlement';
 import useRegisterPushOnLogin from '../notifications/useRegisterPushOnLogin';
 import HomeScreen from '../screens/HomeScreen';
 import MealsScreen from '../screens/MealsScreen';
@@ -35,21 +36,40 @@ function tabIconName(routeName: string, focused: boolean): MciName {
 
 export default function MainTabs() {
   const tab = useSelector((state: RootState) => state.auth.postLoginTab);
+  const pendingInviteToken = useSelector(
+    (state: RootState) => state.auth.pendingInviteToken,
+  );
+  const { role } = useHouseholdEntitlement();
   const navigation = useNavigation();
   const dispatch = useDispatch();
 
   useRegisterPushOnLogin();
 
   useEffect(() => {
-    if (tab !== 'Booking') return;
     const parent = navigation.getParent();
-    if (parent) {
-      parent.navigate('Booking');
-    } else {
-      (navigation as { navigate: (name: string) => void }).navigate('Booking');
+    const navigateRoot = (name: string, params?: object) => {
+      if (parent) {
+        (parent as { navigate: (n: string, p?: object) => void }).navigate(name, params);
+      } else {
+        (navigation as { navigate: (n: string, p?: object) => void }).navigate(name, params);
+      }
+    };
+
+    if (tab === 'Booking') {
+      navigateRoot('Booking');
+      dispatch(setPostLoginTab(null));
+      return;
     }
-    dispatch(setPostLoginTab(null));
-  }, [tab, navigation, dispatch]);
+
+    if (tab === 'AcceptInvite' || role === 'invited' || pendingInviteToken) {
+      navigateRoot('AcceptInvite', {
+        token: pendingInviteToken ?? undefined,
+      });
+      if (tab === 'AcceptInvite') {
+        dispatch(setPostLoginTab(null));
+      }
+    }
+  }, [tab, navigation, dispatch, pendingInviteToken, role]);
 
   return (
     <Tab.Navigator
