@@ -13,7 +13,6 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Button, Card, Icon } from 'react-native-paper';
 import { useDispatch, useSelector } from 'react-redux';
-import dayjs from 'dayjs';
 
 import useGetCurrentUserDetails from '../hooks/useGetCurrentUserDetails';
 import useGetInvoiceHistory from '../hooks/useGetInvoiceHistory';
@@ -21,6 +20,7 @@ import useGetMealPlanForWeek from '../hooks/useGetMealPlanForWeek';
 import useGetSubscription from '../hooks/useGetSubscription';
 import useGetSupportTicketsUnread from '../hooks/useGetSupportTicketsUnread';
 import useHouseholdEntitlement from '../hooks/useHouseholdEntitlement';
+import useRenewSubscription from '../hooks/useRenewSubscription';
 import { currentUser, setUser } from '../store/authSlice';
 import {
   CHEF_GREEN,
@@ -39,6 +39,13 @@ import {
   getInitials,
 } from '../utils/string.utils';
 import { mealPlanHasSelections } from '../utils/mealPlan.utils';
+import {
+  endingSoonLabel,
+  isSubscriptionEntitled,
+  isSubscriptionExpired,
+  subscriptionMsLeft,
+  subscriptionNeedsRenew,
+} from '../utils/subscription.utils';
 import { currentWeekStart, weekRangeLabel } from '../utils/week';
 
 import PaymentHistory from './booking/components/PaymentHistory';
@@ -50,12 +57,18 @@ export default function HomeScreen() {
 
   const {
     isActiveMember,
+    isPayer,
     shouldShowSubscribeCTA,
     cachedPayerFirstName,
   } = useHouseholdEntitlement();
 
-  const { subscription, error: subscriptionError, loading: subscriptionLoading, refetch: refetchSubscription } =
-    useGetSubscription();
+  const {
+    subscription,
+    setSubscription,
+    error: subscriptionError,
+    loading: subscriptionLoading,
+    refetch: refetchSubscription,
+  } = useGetSubscription();
   const { user, error: userError, loading: userLoading, refetch: refetchUser } =
     useGetCurrentUserDetails();
   const {
@@ -66,12 +79,21 @@ export default function HomeScreen() {
   } = useGetInvoiceHistory();
 
   const currentWeek = currentWeekStart();
-  const subscriptionActive = subscription?.status === 'active';
+  const subscriptionEntitled = isSubscriptionEntitled(subscription);
   const {
     mealPlan: currentWeekMealPlan,
     loading: mealPlanLoading,
     refetch: refetchMealPlan,
-  } = useGetMealPlanForWeek(subscriptionActive ? currentWeek : null);
+  } = useGetMealPlanForWeek(subscriptionEntitled ? currentWeek : null);
+
+  const { loading: renewLoading, renew } = useRenewSubscription(subscription, {
+    onRenewed: setSubscription,
+  });
+
+  const showRenew =
+    isPayer && subscription != null && subscriptionNeedsRenew(subscription);
+  const showMemberRenewNotice =
+    isActiveMember && subscription != null && subscriptionNeedsRenew(subscription);
 
   const {
     hasUnread: hasSupportUnread,
@@ -209,15 +231,23 @@ export default function HomeScreen() {
           <HouseholdPlanCard
             subscription={subscription}
             payerFirstName={cachedPayerFirstName ?? 'your payer'}
+            entitled={subscriptionEntitled}
+            showMemberRenewNotice={showMemberRenewNotice}
             onPlanMeals={goToMeals}
             onViewPlan={goToSubscription}
           />
         ) : (
-          <SubscriptionCard subscription={subscription} onManage={goToSubscription} />
+          <SubscriptionCard
+            subscription={subscription}
+            showRenew={showRenew}
+            renewLoading={renewLoading}
+            onRenew={renew}
+            onManage={goToSubscription}
+          />
         )}
       </View>
 
-      {subscriptionActive ? (
+      {subscriptionEntitled ? (
         <View style={styles.cardRow}>
           <MealPlanPromptCard
             hasSelections={hasWeeklyMealSelections}
@@ -347,11 +377,15 @@ function MealPlanPromptCard({
 function HouseholdPlanCard({
   subscription,
   payerFirstName,
+  entitled,
+  showMemberRenewNotice,
   onPlanMeals,
   onViewPlan,
 }: {
   subscription: Subscription;
   payerFirstName: string;
+  entitled: boolean;
+  showMemberRenewNotice: boolean;
   onPlanMeals: () => void;
   onViewPlan: () => void;
 }) {
@@ -368,17 +402,35 @@ function HouseholdPlanCard({
         <Text style={[styles.emptySub, { marginTop: 8 }]}>
           No charge for you — {payerFirstName} stays the billing account.
         </Text>
+        {showMemberRenewNotice ? (
+          <Text style={[styles.autoRenewExpired, { marginTop: 12 }]}>
+            Ask {payerFirstName} to renew — this plan has expired or ends soon.
+          </Text>
+        ) : null}
       </Card.Content>
       <View style={styles.subscriptionActions}>
+        {entitled ? (
+          <Button
+            mode="contained"
+            onPress={onPlanMeals}
+            buttonColor={CHEF_ORANGE}
+            textColor="#fff"
+            style={styles.subscriptionPrimaryBtn}
+            contentStyle={styles.subscriptionBtnContent}
+            labelStyle={styles.subscriptionBtnLabel}
+          >
+            Plan your meals
+          </Button>
+        ) : null}
         <Button
-          mode="contained"
-          onPress={onPlanMeals}
-          style={[styles.btn, styles.subscriptionManageBtn]}
-          contentStyle={styles.subscriptionManageBtnContent}
+          mode={entitled ? 'text' : 'contained'}
+          onPress={onViewPlan}
+          buttonColor={entitled ? undefined : CHEF_ORANGE}
+          textColor={entitled ? CHEF_ORANGE : '#fff'}
+          style={entitled ? styles.subscriptionSecondaryBtn : styles.subscriptionPrimaryBtn}
+          contentStyle={styles.subscriptionBtnContent}
+          labelStyle={styles.subscriptionBtnLabel}
         >
-          Plan your meals
-        </Button>
-        <Button mode="outlined" onPress={onViewPlan} style={styles.btn}>
           View plan
         </Button>
       </View>
@@ -388,13 +440,21 @@ function HouseholdPlanCard({
 
 function SubscriptionCard({
   subscription,
+  showRenew,
+  renewLoading,
+  onRenew,
   onManage,
 }: {
   subscription: Subscription;
+  showRenew: boolean;
+  renewLoading: boolean;
+  onRenew: () => void;
   onManage: () => void;
 }) {
   const plan = subscription.subscriptionPlan;
-  const subscriptionExpired = dayjs().isAfter(dayjs(subscription.expiresAt));
+  const subscriptionExpired = isSubscriptionExpired(subscription);
+  const msLeft = subscriptionMsLeft(subscription);
+  const endingSoon = !subscriptionExpired && msLeft <= 3 * 24 * 60 * 60 * 1000;
 
   return (
     <Card style={[styles.card, styles.subscriptionCard]}>
@@ -422,18 +482,38 @@ function SubscriptionCard({
         >
           {subscriptionExpired
             ? 'Subscription expired'
-            : subscription.autoRenewal
-              ? 'Renews automatically'
-              : "Doesn't renew automatically"}
+            : endingSoon
+              ? endingSoonLabel(msLeft)
+              : subscription.autoRenewal
+                ? 'Renews automatically'
+                : "Doesn't renew automatically"}
         </Text>
       </Card.Content>
       <View style={styles.subscriptionActions}>
+        {showRenew ? (
+          <Button
+            mode="contained"
+            onPress={onRenew}
+            loading={renewLoading}
+            disabled={renewLoading}
+            buttonColor={CHEF_ORANGE}
+            textColor="#fff"
+            style={styles.subscriptionPrimaryBtn}
+            contentStyle={styles.subscriptionBtnContent}
+            labelStyle={styles.subscriptionBtnLabel}
+          >
+            Renew
+          </Button>
+        ) : null}
         <Button
-          mode="contained"
+          mode={showRenew ? 'text' : 'contained'}
           compact={false}
           onPress={onManage}
-          style={[styles.btn, styles.subscriptionManageBtn]}
-          contentStyle={styles.subscriptionManageBtnContent}
+          buttonColor={showRenew ? undefined : CHEF_ORANGE}
+          textColor={showRenew ? CHEF_ORANGE : '#fff'}
+          style={showRenew ? styles.subscriptionSecondaryBtn : styles.subscriptionPrimaryBtn}
+          contentStyle={styles.subscriptionBtnContent}
+          labelStyle={styles.subscriptionBtnLabel}
         >
           Manage subscription
         </Button>
@@ -613,18 +693,37 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'stretch',
     alignSelf: 'stretch',
+    overflow: 'hidden',
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
   },
-  subscriptionManageBtn: {
+  subscriptionPrimaryBtn: {
     width: '100%',
     alignSelf: 'stretch',
     margin: 0,
     borderRadius: 0,
   },
-  subscriptionManageBtnContent: {
+  subscriptionSecondaryBtn: {
+    width: '100%',
+    alignSelf: 'stretch',
+    margin: 0,
+    borderRadius: 0,
+    backgroundColor: '#fff8f0',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#fed7aa',
+  },
+  subscriptionBtnContent: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
+    minHeight: 48,
+    paddingVertical: 8,
+  },
+  subscriptionBtnLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,

@@ -6,13 +6,19 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Switch } from 'react-native-paper';
+import { useNavigation } from '@react-navigation/native';
+import { Button, Switch } from 'react-native-paper';
 
 import useGetPreference from '../../hooks/useGetPreference';
 import useGetSubscription from '../../hooks/useGetSubscription';
 import useHouseholdEntitlement from '../../hooks/useHouseholdEntitlement';
+import useRenewSubscription from '../../hooks/useRenewSubscription';
 import useToggleAutoRenew from '../../hooks/useToggleAutoRenew';
-import { formatDate } from '../../utils/string.utils';
+import { formatDate, formatToMoney } from '../../utils/string.utils';
+import {
+  isSubscriptionExpired,
+  subscriptionNeedsRenew,
+} from '../../utils/subscription.utils';
 import { capitalizeString } from '../../utils/url.utils';
 import { CHEF_ORANGE } from '../../constants/theme';
 
@@ -20,13 +26,20 @@ import AutoRenewalModal from './components/AutoRenewalModal';
 import SubscriptionItem from './components/SubscriptionItem';
 
 export default function SubscriptionScreen() {
+  const navigation = useNavigation();
   const [autoRenew, setAutoRenew] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const { subscription, loading, error } = useGetSubscription();
-  const { isActiveMember, householdManagement } = useHouseholdEntitlement();
+  const { subscription, setSubscription, loading, error } = useGetSubscription();
+  const { isActiveMember, isPayer, householdManagement } = useHouseholdEntitlement();
   const { preference, loading: loadingPreferences } = useGetPreference();
   const { toggleAutoRenewal, loading: toggling } = useToggleAutoRenew();
+  const { loading: renewLoading, renew } = useRenewSubscription(subscription, {
+    onRenewed: (updated) => {
+      setSubscription(updated);
+      setAutoRenew(updated.autoRenewal);
+    },
+  });
 
   useEffect(() => {
     if (subscription) setAutoRenew(subscription.autoRenewal);
@@ -46,6 +59,15 @@ export default function SubscriptionScreen() {
     });
   }, [autoRenew, toggleAutoRenewal]);
 
+  const goToBooking = useCallback(() => {
+    const parent = navigation.getParent();
+    if (parent) {
+      (parent as { navigate: (name: string) => void }).navigate('Booking');
+    } else {
+      (navigation as { navigate: (screen: string) => void }).navigate('Booking');
+    }
+  }, [navigation]);
+
   if (loading || loadingPreferences) {
     return (
       <View style={styles.centered}>
@@ -64,6 +86,11 @@ export default function SubscriptionScreen() {
   }
 
   const plan = subscription.subscriptionPlan;
+  const showRenew = isPayer && subscriptionNeedsRenew(subscription);
+  const showMemberSoft = isActiveMember && subscriptionNeedsRenew(subscription);
+  const expired = isSubscriptionExpired(subscription);
+  const planName = capitalizeString(plan.name);
+  const formattedAmount = formatToMoney(plan.amount / 100);
   const visitDays = (() => {
     const vd = subscription.visitingDays;
     if (!vd) return '--';
@@ -120,6 +147,48 @@ export default function SubscriptionScreen() {
         {isActiveMember && householdManagement === 'payer_assigns' ? (
           <Text style={styles.memberBanner}>Your payer manages visit days.</Text>
         ) : null}
+        {showRenew ? (
+          <View style={styles.renewBanner}>
+            <Text style={styles.renewTitle}>
+              {expired
+                ? 'Your subscription has expired'
+                : 'Your subscription ends soon'}
+            </Text>
+            <Text style={styles.renewBody}>
+              Renew to keep cook-in visits for your household. Same plan ·{' '}
+              {planName} · {formattedAmount}/month.
+            </Text>
+            <View style={styles.renewActions}>
+              <Button
+                mode="contained"
+                onPress={() => renew()}
+                loading={renewLoading}
+                disabled={renewLoading}
+                style={styles.renewPrimaryBtn}
+                buttonColor={CHEF_ORANGE}
+              >
+                Renew now
+              </Button>
+              <Button
+                mode="outlined"
+                onPress={goToBooking}
+                disabled={renewLoading}
+                style={styles.renewSecondaryBtn}
+                textColor={CHEF_ORANGE}
+              >
+                Change plan
+              </Button>
+            </View>
+          </View>
+        ) : null}
+        {showMemberSoft ? (
+          <View style={styles.renewBanner}>
+            <Text style={styles.renewTitle}>Ask your payer to renew</Text>
+            <Text style={styles.renewBody}>
+              Only the account that pays can renew this plan.
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.card}>
           {items.map((item, index) => (
             <SubscriptionItem
@@ -140,7 +209,9 @@ export default function SubscriptionScreen() {
               Automatically renew subscription
             </Text>
             <Text style={styles.settingsHint}>
-              Your subscription will renew at the end of the billing period.
+              {showRenew
+                ? 'Turning this on does not charge you now — use Renew to pay for another month.'
+                : 'Your subscription will renew at the end of the billing period.'}
             </Text>
           </View>
           <Switch
@@ -188,6 +259,40 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: -12,
     marginBottom: 16,
+  },
+  renewBanner: {
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  renewTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#78350f',
+    marginBottom: 8,
+  },
+  renewBody: {
+    fontSize: 14,
+    color: '#92400e',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  renewActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    alignItems: 'center',
+  },
+  renewPrimaryBtn: {
+    backgroundColor: CHEF_ORANGE,
+    borderRadius: 12,
+  },
+  renewSecondaryBtn: {
+    borderRadius: 12,
+    borderColor: CHEF_ORANGE,
   },
   card: {
     backgroundColor: '#fff',

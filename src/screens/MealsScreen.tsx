@@ -35,6 +35,7 @@ import useGetMealPlanForWeek from '../hooks/useGetMealPlanForWeek';
 import useGetSubscription from '../hooks/useGetSubscription';
 import useHouseholdEntitlement from '../hooks/useHouseholdEntitlement';
 import useHouseholdMembers from '../hooks/useHouseholdMembers';
+import useRenewSubscription from '../hooks/useRenewSubscription';
 import useSaveMealPlan from '../hooks/useSaveMealPlan';
 import type {
   DayOfWeek,
@@ -53,6 +54,7 @@ import {
   weekOptionsForSubscription,
   weekRangeLabel,
 } from '../utils/week';
+import { isSubscriptionEntitled, subscriptionNeedsRenew } from '../utils/subscription.utils';
 import { capitalizeString } from '../utils/url.utils';
 
 const MAX_PER_DAY = 5;
@@ -138,7 +140,7 @@ function seedSelectionsFromPlan(
 
 export default function MealsScreen() {
   const navigation = useNavigation();
-  const { subscription, loading: subscriptionLoading } = useGetSubscription();
+  const { subscription, setSubscription, loading: subscriptionLoading } = useGetSubscription();
   const {
     isPayer,
     isActiveMember,
@@ -148,6 +150,10 @@ export default function MealsScreen() {
   const { members } = useHouseholdMembers(isPayer);
   const [selectedMemberUserId, setSelectedMemberUserId] = useState<number | null>(null);
   const [quotaSnackbar, setQuotaSnackbar] = useState(false);
+
+  const { loading: renewLoading, renew } = useRenewSubscription(subscription, {
+    onRenewed: setSubscription,
+  });
 
   const targetUserId =
     selectedMemberUserId != null ? selectedMemberUserId : undefined;
@@ -270,7 +276,7 @@ export default function MealsScreen() {
     setCollapsedSections(new Set(mealSections.map((s) => s.title)));
   }, [mealSections]);
 
-  const isActive = subscription?.status === 'active';
+  const isActive = isSubscriptionEntitled(subscription);
 
   const showQuotaError = (err: string) => {
     if (err.toLowerCase().includes('quota_exceeded')) {
@@ -587,6 +593,10 @@ export default function MealsScreen() {
     }
   };
 
+  const goToSubscription = () => {
+    (navigation as { navigate: (screen: string) => void }).navigate('Subscription');
+  };
+
   if (subscriptionLoading) {
     return (
       <View style={styles.centered}>
@@ -596,6 +606,33 @@ export default function MealsScreen() {
   }
 
   if (!isActive) {
+    if (subscription && subscriptionNeedsRenew(subscription)) {
+      return (
+        <View style={[styles.centered, styles.padded]}>
+          <Text style={styles.gateTitle}>Subscription period has ended</Text>
+          <Text style={styles.gateBody}>
+            {isPayer
+              ? 'Renew your subscription to plan meals for upcoming weeks.'
+              : 'Ask your payer to renew so you can plan meals again.'}
+          </Text>
+          {isPayer ? (
+            <Button
+              mode="contained"
+              onPress={() => renew()}
+              loading={renewLoading}
+              disabled={renewLoading}
+              style={styles.primaryBtn}
+            >
+              Renew now
+            </Button>
+          ) : (
+            <Button mode="contained" onPress={goToSubscription} style={styles.primaryBtn}>
+              View plan
+            </Button>
+          )}
+        </View>
+      );
+    }
     if (shouldShowSubscribeCTA) {
     return (
       <View style={[styles.centered, styles.padded]}>

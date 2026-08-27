@@ -16,11 +16,12 @@ export default function useGetSubscription() {
     if (err) setError(String(err));
     else setSubscription(sub ?? null);
     setLoading(false);
+    return sub ?? null;
   }, []);
 
   useEffect(() => {
     void refetch();
   }, [refetch]);
 
-  return { subscription, loading, error, refetch };
+  return { subscription, setSubscription, loading, error, refetch };
 }
