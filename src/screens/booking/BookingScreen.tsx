@@ -492,26 +492,29 @@ export default function BookingScreen() {
         <View style={styles.section}>
           <Text style={styles.label}>Location (Lagos)</Text>
           <View style={styles.row}>
-            {(['', 'lagos-island', 'lagos-mainland'] as const).map((loc) => {
-              const labels = ['Select', 'Lagos Island', 'Mainland'] as const;
-              const idx = loc === '' ? 0 : loc === 'lagos-island' ? 1 : 2;
-              return (
-                <Button
-                  key={String(loc)}
-                  mode={logistics.location === loc ? 'contained' : 'outlined'}
-                  compact
-                  onPress={() =>
-                    setLogistics((p) => ({
-                      ...p,
-                      location: loc as LogisticsProps['location'],
-                    }))
-                  }
-                  style={styles.locBtn}
-                >
-                  {labels[idx]}
-                </Button>
-              );
-            })}
+            {(
+              [
+                ['', 'Select'],
+                ['lagos-all', 'All'],
+                ['lagos-island', 'Island'],
+                ['lagos-mainland', 'Mainland'],
+              ] as const
+            ).map(([loc, label]) => (
+              <Button
+                key={String(loc) || 'none'}
+                mode={logistics.location === loc ? 'contained' : 'outlined'}
+                compact
+                onPress={() =>
+                  setLogistics((p) => ({
+                    ...p,
+                    location: loc as LogisticsProps['location'],
+                  }))
+                }
+                style={styles.locBtn}
+              >
+                {label}
+              </Button>
+            ))}
           </View>
 
           <Text style={styles.label}>Weekly sessions</Text>
@@ -678,11 +681,13 @@ export default function BookingScreen() {
                 ],
                 [
                   'Location',
-                  logistics.location === 'lagos-island'
-                    ? 'Lagos Island'
-                    : logistics.location === 'lagos-mainland'
-                      ? 'Lagos Mainland'
-                      : '--',
+                  logistics.location === 'lagos-all'
+                    ? 'All Lagos'
+                    : logistics.location === 'lagos-island'
+                      ? 'Lagos Island'
+                      : logistics.location === 'lagos-mainland'
+                        ? 'Lagos Mainland'
+                        : '--',
                 ],
                 [
                   'Weekly sessions',

@@ -12,6 +12,7 @@ import {
 import { Button } from 'react-native-paper';
 
 import { persistProfileUpdate } from '../api/userApi';
+import LagosAreaFields from '../components/LagosAreaFields';
 import {
   CHEF_GREY,
   CHEF_ORANGE,
@@ -20,7 +21,7 @@ import {
   GRAY_400,
   GRAY_600,
 } from '../constants/theme';
-import type { User } from '../types';
+import type { LagosLocation, User } from '../types';
 
 type Props = {
   visible: boolean;
@@ -39,6 +40,8 @@ export default function SubscriptionContactSheet({
   const [streetAddress1, setStreetAddress1] = useState('');
   const [streetAddress2, setStreetAddress2] = useState('');
   const [city, setCity] = useState('');
+  const [visitLocation, setVisitLocation] = useState<LagosLocation | ''>('');
+  const [localArea, setLocalArea] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,6 +51,8 @@ export default function SubscriptionContactSheet({
     setStreetAddress1(user.address?.streetAddress1 ?? '');
     setStreetAddress2(user.address?.streetAddress2 ?? '');
     setCity(user.address?.city ?? '');
+    setVisitLocation(user.address?.visitLocation ?? '');
+    setLocalArea(user.address?.localArea ?? '');
     setError(null);
   }, [visible, user]);
 
@@ -65,6 +70,14 @@ export default function SubscriptionContactSheet({
       setError('City is required.');
       return;
     }
+    if (!visitLocation) {
+      setError('Select your Lagos area.');
+      return;
+    }
+    if (!localArea) {
+      setError('Select your local area.');
+      return;
+    }
 
     setError(null);
     setLoading(true);
@@ -78,6 +91,8 @@ export default function SubscriptionContactSheet({
         streetAddress2: streetAddress2.trim(),
         city: city.trim(),
         state: user.address?.state?.trim() || 'lagos',
+        visitLocation,
+        localArea,
       },
     });
     setLoading(false);
@@ -144,6 +159,15 @@ export default function SubscriptionContactSheet({
             placeholderTextColor={GRAY_400}
             editable={!loading}
             maxLength={100}
+          />
+
+          <LagosAreaFields
+            visitLocation={visitLocation}
+            localArea={localArea}
+            onVisitLocationChange={setVisitLocation}
+            onLocalAreaChange={setLocalArea}
+            disabled={loading}
+            columnGap={12}
           />
 
           <View style={styles.row}>

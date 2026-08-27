@@ -69,6 +69,7 @@ export interface HouseholdListResponse {
 export interface InvitePreview {
   inviterFirstName: string;
   planName: string;
+  payerVisitLocation?: string;
 }
 
 export interface InviteAcceptAddressPayload {
@@ -79,6 +80,7 @@ export interface InviteAcceptAddressPayload {
   city?: string;
   state?: string;
   visitLocation?: string;
+  localArea?: string;
 }
 
 export interface GenericResponse {
@@ -91,6 +93,8 @@ export interface Address {
   city: string;
   state: string;
   country: string;
+  visitLocation?: LagosLocation | '';
+  localArea?: string;
 }
 
 export interface Chef {
@@ -153,7 +157,7 @@ export interface Ingredient {
   imageUrl?: string;
 }
 
-export type LagosLocation = 'lagos-island' | 'lagos-mainland';
+export type LagosLocation = 'lagos-all' | 'lagos-island' | 'lagos-mainland';
 
 export interface LogisticsProps {
   location: LagosLocation | '';

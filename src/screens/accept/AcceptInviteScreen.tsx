@@ -18,6 +18,7 @@ import {
 } from '../../api/subscriptionMembersApi';
 import { CHEF_ORANGE, GRAY_600 } from '../../constants/theme';
 import type { RootStackParamList } from '../../navigation/types';
+import type { LagosLocation } from '../../types';
 import type { RootState } from '../../store';
 import {
   isAuthenticated,
@@ -46,6 +47,9 @@ export default function AcceptInviteScreen({ route, navigation }: Props) {
   const [actionLoading, setActionLoading] = useState(false);
   const [inviterFirstName, setInviterFirstName] = useState('');
   const [planName, setPlanName] = useState('');
+  const [payerVisitLocation, setPayerVisitLocation] = useState<
+    LagosLocation | undefined
+  >();
   const [errorCopy, setErrorCopy] = useState<{ title: string; body: string } | null>(
     null,
   );
@@ -70,6 +74,9 @@ export default function AcceptInviteScreen({ route, navigation }: Props) {
     } else {
       setInviterFirstName(preview.inviterFirstName);
       setPlanName(preview.planName);
+      setPayerVisitLocation(
+        preview.payerVisitLocation as LagosLocation | undefined,
+      );
       dispatch(setCachedPayerFirstName(preview.inviterFirstName));
       setStep('preview');
     }
@@ -119,6 +126,7 @@ export default function AcceptInviteScreen({ route, navigation }: Props) {
     streetAddress2: string;
     city: string;
     visitLocation: string;
+    localArea: string;
   }) => {
     void finishAddress({
       token,
@@ -128,6 +136,7 @@ export default function AcceptInviteScreen({ route, navigation }: Props) {
       city: address.city,
       state: 'lagos',
       visitLocation: address.visitLocation,
+      localArea: address.localArea,
     });
   };
 
@@ -195,6 +204,7 @@ export default function AcceptInviteScreen({ route, navigation }: Props) {
       {step === 'address' ? (
         <AcceptAddressStep
           inviterFirstName={inviterFirstName}
+          payerVisitLocation={payerVisitLocation}
           loading={actionLoading}
           onSubmitOwn={handleSubmitOwn}
           onSubmitSame={handleSubmitSame}

@@ -11,25 +11,30 @@ import {
 } from 'react-native';
 import { Button } from 'react-native-paper';
 
+import LagosAreaFields from '../../components/LagosAreaFields';
 import { CHEF_ORANGE, ERROR_RED, GRAY_600 } from '../../constants/theme';
+import type { LagosLocation } from '../../types';
 
 type AddressMode = 'own' | 'same';
 
 type Props = {
   inviterFirstName: string;
+  payerVisitLocation?: LagosLocation | '' | null;
   loading?: boolean;
   error?: string | null;
   onSubmitOwn: (address: {
     streetAddress1: string;
     streetAddress2: string;
     city: string;
-    visitLocation: string;
+    visitLocation: LagosLocation;
+    localArea: string;
   }) => void;
   onSubmitSame: () => void;
 };
 
 export default function AcceptAddressStep({
   inviterFirstName,
+  payerVisitLocation,
   loading,
   error,
   onSubmitOwn,
@@ -39,7 +44,8 @@ export default function AcceptAddressStep({
   const [street1, setStreet1] = useState('');
   const [street2, setStreet2] = useState('');
   const [city, setCity] = useState('');
-  const [visitLocation, setVisitLocation] = useState<'island' | 'mainland'>('island');
+  const [visitLocation, setVisitLocation] = useState<LagosLocation | ''>('');
+  const [localArea, setLocalArea] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
 
   const handleOwnSubmit = () => {
@@ -51,12 +57,21 @@ export default function AcceptAddressStep({
       setValidationError('City is required.');
       return;
     }
+    if (!visitLocation) {
+      setValidationError('Select your Lagos area.');
+      return;
+    }
+    if (!localArea) {
+      setValidationError('Select your local area.');
+      return;
+    }
     setValidationError(null);
     onSubmitOwn({
       streetAddress1: street1.trim(),
       streetAddress2: street2.trim(),
       city: city.trim(),
       visitLocation,
+      localArea,
     });
   };
 
@@ -91,29 +106,18 @@ export default function AcceptAddressStep({
             <TextInput style={styles.input} value={street1} onChangeText={setStreet1} />
             <Text style={styles.label}>Apartment, suite (optional)</Text>
             <TextInput style={styles.input} value={street2} onChangeText={setStreet2} />
+            <LagosAreaFields
+              visitLocation={visitLocation}
+              localArea={localArea}
+              onVisitLocationChange={setVisitLocation}
+              onLocalAreaChange={setLocalArea}
+              disabled={loading}
+              payerVisitLocation={payerVisitLocation}
+            />
             <Text style={styles.label}>City</Text>
             <TextInput style={styles.input} value={city} onChangeText={setCity} />
             <Text style={styles.label}>State</Text>
             <TextInput style={[styles.input, styles.locked]} value="Lagos" editable={false} />
-            <Text style={styles.label}>Area</Text>
-            <View style={styles.segmentRow}>
-              <Button
-                mode={visitLocation === 'island' ? 'contained' : 'outlined'}
-                onPress={() => setVisitLocation('island')}
-                style={styles.segmentBtn}
-                compact
-              >
-                Island
-              </Button>
-              <Button
-                mode={visitLocation === 'mainland' ? 'contained' : 'outlined'}
-                onPress={() => setVisitLocation('mainland')}
-                style={styles.segmentBtn}
-                compact
-              >
-                Mainland
-              </Button>
-            </View>
             <Button
               mode="contained"
               onPress={handleOwnSubmit}
@@ -207,8 +211,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   locked: { backgroundColor: '#f3f4f6', color: GRAY_600 },
-  segmentRow: { flexDirection: 'row', gap: 8, marginTop: 4, marginBottom: 16 },
-  segmentBtn: { flex: 1 },
   cta: { marginTop: 8 },
   error: { color: ERROR_RED, marginTop: 12, fontSize: 14 },
 });

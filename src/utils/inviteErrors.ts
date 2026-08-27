@@ -5,6 +5,7 @@ export type InviteErrorKind =
   | 'already_subscribed'
   | 'pending_invoice'
   | 'already_in_household'
+  | 'household_area_mismatch'
   | 'invite_expired'
   | 'generic';
 
@@ -42,6 +43,10 @@ const ERROR_COPY: Record<InviteErrorKind, InviteErrorCopy> = {
     title: "You're already on a household plan.",
     body: 'Leave that household before accepting another invite.',
   },
+  household_area_mismatch: {
+    title: 'Your area must match the household payer',
+    body: 'When the payer is on Lagos Island or Lagos Mainland, members with their own address must use the same area. Choose Same as owner, or pick the matching area.',
+  },
   generic: {
     title: "We couldn't accept this invite.",
     body: 'Check your connection and try again. If it keeps failing, ask the payer to resend.',
@@ -68,6 +73,9 @@ export function mapInviteError(
   }
   if (normalized.includes('already_in_household')) {
     return ERROR_COPY.already_in_household;
+  }
+  if (normalized.includes('household_area_mismatch')) {
+    return ERROR_COPY.household_area_mismatch;
   }
   if (
     normalized.includes('invite_expired') ||
