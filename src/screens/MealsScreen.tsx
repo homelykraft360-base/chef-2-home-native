@@ -172,13 +172,27 @@ export default function MealsScreen() {
   const planningForOther =
     isPayer && selectedMemberUserId != null && householdManagement === 'members_pick';
 
+  const visitingDays = useMemo(
+    () => parseVisitingDays(subscription ?? null),
+    [subscription],
+  );
+
+  const visitingDaysMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const { day, timeOfDay } of visitingDays) {
+      map[day] = timeOfDay;
+    }
+    return map;
+  }, [visitingDays]);
+
   const weekOptions = useMemo(
     () =>
       weekOptionsForSubscription(
         subscription?.lastPaid,
         subscription?.expiresAt,
+        visitingDaysMap,
       ),
-    [subscription?.lastPaid, subscription?.expiresAt],
+    [subscription?.lastPaid, subscription?.expiresAt, visitingDaysMap],
   );
 
   const [selectedWeek, setSelectedWeek] = useState<string>(currentWeekStart());
@@ -206,11 +220,6 @@ export default function MealsScreen() {
   const [meals, setMeals] = useState<Meal[] | null>(null);
   const [mealsError, setMealsError] = useState<string | null>(null);
   const [mealsLoading, setMealsLoading] = useState(false);
-
-  const visitingDays = useMemo(
-    () => parseVisitingDays(subscription ?? null),
-    [subscription],
-  );
 
   const [selections, setSelections] = useState<DaySelections>({} as DaySelections);
   const [mealSizes, setMealSizes] = useState<DayMealSizes>({} as DayMealSizes);

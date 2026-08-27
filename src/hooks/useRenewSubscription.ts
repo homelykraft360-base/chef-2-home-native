@@ -3,11 +3,9 @@ import { Alert } from 'react-native';
 import { usePaystack } from 'react-native-paystack-webview';
 import { useSelector } from 'react-redux';
 
-import {
-  fetchCurrentUserSubscription,
-  renewSubscription,
-} from '../api/subscriptionApi';
+import { renewSubscription } from '../api/subscriptionApi';
 import { verifyTransaction } from '../api/transactionApi';
+import { refreshSubscriptionAfterRenew } from '../hooks/useGetSubscription';
 import { currentUser } from '../store/authSlice';
 import type { Subscription } from '../types';
 
@@ -113,10 +111,9 @@ export default function useRenewSubscription(
             return;
           }
 
-          const { subscription: refreshed, error: refetchError } =
-            await fetchCurrentUserSubscription();
+          const refreshed = await refreshSubscriptionAfterRenew(subscription);
 
-          if (refetchError || !refreshed) {
+          if (!refreshed) {
             Alert.alert('Renewal', RENEW_SUCCESS);
             setLoading(false);
             return;

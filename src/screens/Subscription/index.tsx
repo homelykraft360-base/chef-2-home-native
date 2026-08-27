@@ -6,7 +6,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Button, Switch } from 'react-native-paper';
 
 import useGetPreference from '../../hooks/useGetPreference';
@@ -30,8 +30,9 @@ export default function SubscriptionScreen() {
   const [autoRenew, setAutoRenew] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const { subscription, setSubscription, loading, error } = useGetSubscription();
-  const { isActiveMember, isPayer, householdManagement } = useHouseholdEntitlement();
+  const { subscription, setSubscription, loading, error, refetch } = useGetSubscription();
+  const { isActiveMember, isPayer, householdManagement } =
+    useHouseholdEntitlement(subscription);
   const { preference, loading: loadingPreferences } = useGetPreference();
   const { toggleAutoRenewal, loading: toggling } = useToggleAutoRenew();
   const { loading: renewLoading, renew } = useRenewSubscription(subscription, {
@@ -67,6 +68,12 @@ export default function SubscriptionScreen() {
       (navigation as { navigate: (screen: string) => void }).navigate('Booking');
     }
   }, [navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch]),
+  );
 
   if (loading || loadingPreferences) {
     return (

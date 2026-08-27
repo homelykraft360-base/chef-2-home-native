@@ -42,7 +42,7 @@ export const removeHouseholdMember = async (memberId: number) => {
 
 export const patchMemberQuotas = async (
   memberId: number,
-  payload: { weeklySessionsQuota: number; weeklyMealSlotsQuota: number },
+  payload: { weeklySessionsQuota: number },
 ) => {
   const { data, error } = await tryCatch<{ member: SubscriptionMember }>(
     clientApi.patch(`${BASE_PATH}/members/${memberId}/quotas`, payload),

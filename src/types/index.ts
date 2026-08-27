@@ -72,8 +72,14 @@ export interface InvitePreview {
   payerVisitLocation?: string;
 }
 
+export type PendingInviteStep = 'preview' | 'address';
+
+export interface PendingInvite extends InvitePreview {
+  step: PendingInviteStep;
+}
+
 export interface InviteAcceptAddressPayload {
-  token: string;
+  token?: string;
   useOwnerAddress: boolean;
   streetAddress1?: string;
   streetAddress2?: string;

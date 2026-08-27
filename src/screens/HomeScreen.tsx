@@ -46,8 +46,14 @@ import {
   subscriptionMsLeft,
   subscriptionNeedsRenew,
 } from '../utils/subscription.utils';
-import { currentWeekStart, weekRangeLabel } from '../utils/week';
+import {
+  currentWeekStart,
+  firstPlanWeekForSubscription,
+  weekRangeLabel,
+} from '../utils/week';
 
+import usePendingInvite from '../hooks/usePendingInvite';
+import PendingInviteHomeCard from '../components/PendingInviteHomeCard';
 import PaymentHistory from './booking/components/PaymentHistory';
 
 export default function HomeScreen() {
@@ -80,11 +86,19 @@ export default function HomeScreen() {
 
   const currentWeek = currentWeekStart();
   const subscriptionEntitled = isSubscriptionEntitled(subscription);
+  const planWeek =
+    subscriptionEntitled && subscription
+      ? firstPlanWeekForSubscription(
+          subscription.lastPaid,
+          subscription.expiresAt,
+          subscription.visitingDays,
+        ) ?? currentWeek
+      : null;
   const {
     mealPlan: currentWeekMealPlan,
     loading: mealPlanLoading,
     refetch: refetchMealPlan,
-  } = useGetMealPlanForWeek(subscriptionEntitled ? currentWeek : null);
+  } = useGetMealPlanForWeek(planWeek);
 
   const { loading: renewLoading, renew } = useRenewSubscription(subscription, {
     onRenewed: setSubscription,
@@ -103,10 +117,19 @@ export default function HomeScreen() {
 
   const [refreshing, setRefreshing] = useState(false);
 
+  const {
+    invite: pendingInvite,
+    loading: pendingInviteLoading,
+    refetch: refetchPendingInvite,
+  } = usePendingInvite(!subscriptionEntitled);
+
   useFocusEffect(
     useCallback(() => {
       refetchSupportUnread();
-    }, [refetchSupportUnread]),
+      if (!subscriptionEntitled) {
+        void refetchPendingInvite();
+      }
+    }, [refetchPendingInvite, refetchSupportUnread, subscriptionEntitled]),
   );
 
   const onRefresh = useCallback(async () => {
@@ -118,11 +141,12 @@ export default function HomeScreen() {
         refetchInvoices(),
         refetchMealPlan(),
         refetchSupportUnread(),
+        refetchPendingInvite(),
       ]);
     } finally {
       setRefreshing(false);
     }
-  }, [refetchInvoices, refetchMealPlan, refetchSubscription, refetchSupportUnread, refetchUser]);
+  }, [refetchInvoices, refetchMealPlan, refetchPendingInvite, refetchSubscription, refetchSupportUnread, refetchUser]);
 
   useEffect(() => {
     if (user) dispatch(setUser(user));
@@ -149,6 +173,17 @@ export default function HomeScreen() {
   };
   const goToMeals = () => {
     (navigation as { navigate: (screen: string) => void }).navigate('Meals');
+  };
+  const goToHousehold = () => {
+    (navigation as { navigate: (screen: string) => void }).navigate('Household');
+  };
+  const goToAcceptInvite = () => {
+    const parent = navigation.getParent();
+    if (parent) {
+      (parent as { navigate: (name: string) => void }).navigate('AcceptInvite');
+    } else {
+      (navigation as { navigate: (screen: string) => void }).navigate('AcceptInvite');
+    }
   };
   const goToSupport = () => {
     const parent = navigation.getParent();
@@ -247,14 +282,30 @@ export default function HomeScreen() {
         )}
       </View>
 
+      {pendingInvite && !subscriptionEntitled ? (
+        <View style={styles.cardRow}>
+          <PendingInviteHomeCard
+            invite={pendingInvite}
+            loading={pendingInviteLoading}
+            onPress={goToAcceptInvite}
+          />
+        </View>
+      ) : null}
+
       {subscriptionEntitled ? (
         <View style={styles.cardRow}>
           <MealPlanPromptCard
             hasSelections={hasWeeklyMealSelections}
             loading={mealPlanLoading}
-            weekLabel={weekRangeLabel(currentWeek)}
+            weekLabel={weekRangeLabel(planWeek ?? currentWeek)}
             onPress={goToMeals}
           />
+        </View>
+      ) : null}
+
+      {subscriptionEntitled && isPayer ? (
+        <View style={styles.cardRow}>
+          <HouseholdPromptCard onPress={goToHousehold} />
         </View>
       ) : null}
 
@@ -314,6 +365,27 @@ export default function HomeScreen() {
         ) : null}
       </TouchableOpacity>
     </View>
+  );
+}
+
+function HouseholdPromptCard({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+      <Card style={[styles.card, styles.mealPromptCard]}>
+        <Card.Content style={styles.mealPromptContent}>
+          <View style={styles.mealPromptIconWrap}>
+            <Icon source="account-group" size={22} color={CHEF_ORANGE} />
+          </View>
+          <View style={styles.mealPromptTextWrap}>
+            <Text style={styles.mealPromptTitle}>Add or Manage Household</Text>
+            <Text style={styles.mealPromptSub}>
+              Invite family members to share your subscription and meal plan
+            </Text>
+          </View>
+          <Icon source="chevron-right" size={24} color={GRAY_600} />
+        </Card.Content>
+      </Card>
+    </TouchableOpacity>
   );
 }
 

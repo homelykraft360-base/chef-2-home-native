@@ -34,7 +34,7 @@ function memberChipName(member: SubscriptionMember): string {
   return 'Member';
 }
 
-type QuotaDraft = { sessions: number; meals: number };
+type QuotaDraft = number;
 
 export default function HouseholdTab() {
   const {
@@ -77,30 +77,29 @@ export default function HouseholdTab() {
   );
 
   const sessionPoolFromSub = weeklySessionsPool || 4;
-  const mealPool = sessionPoolFromSub * 5;
 
-  const getDraft = useCallback(
-    (member: SubscriptionMember): QuotaDraft =>
-      drafts[member.id] ?? {
-        sessions: member.weeklySessionsQuota ?? 0,
-        meals: member.weeklyMealSlotsQuota ?? 0,
-      },
+  const editableMembers = useMemo(
+    () =>
+      activeMembers.filter(
+        (m) => m.role !== 'payer' && m.status === 'active',
+      ),
+    [activeMembers],
+  );
+
+  const getDraftSessions = useCallback(
+    (member: SubscriptionMember): number =>
+      drafts[member.id] ?? member.weeklySessionsQuota ?? 0,
     [drafts],
   );
 
-  const totals = useMemo(() => {
-    let sessions = 0;
-    let meals = 0;
-    for (const m of activeMembers) {
-      const d = getDraft(m);
-      sessions += d.sessions;
-      meals += d.meals;
-    }
-    return { sessions, meals };
-  }, [activeMembers, getDraft]);
+  const assignedSessions = useMemo(
+    () =>
+      editableMembers.reduce((sum, member) => sum + getDraftSessions(member), 0),
+    [editableMembers, getDraftSessions],
+  );
 
-  const sessionsOver = totals.sessions > sessionPoolFromSub;
-  const mealsOver = totals.meals > mealPool;
+  const payerSessions = sessionPoolFromSub - assignedSessions;
+  const sessionsOver = assignedSessions > sessionPoolFromSub;
   const hasDirtyQuotas = Object.keys(drafts).length > 0;
 
   const seatSummary =
@@ -155,12 +154,11 @@ export default function HouseholdTab() {
   };
 
   const handleUpdateQuotas = (member: SubscriptionMember) => {
-    const d = getDraft(member);
+    const sessions = getDraftSessions(member);
     updateQuotas({
       payload: {
         memberId: member.id,
-        weeklySessionsQuota: d.sessions,
-        weeklyMealSlotsQuota: d.meals,
+        weeklySessionsQuota: sessions,
       },
       onSuccess: () => {
         setDrafts((prev) => {
@@ -223,18 +221,13 @@ export default function HouseholdTab() {
     );
   };
 
-  const setDraftField = (
-    memberId: number,
-    field: 'sessions' | 'meals',
-    value: string,
-  ) => {
-    const member = activeMembers.find((m) => m.id === memberId);
+  const setDraftSessions = (memberId: number, value: string) => {
+    const member = editableMembers.find((m) => m.id === memberId);
     if (!member) return;
     const parsed = Math.max(0, parseInt(value.replace(/\D/g, ''), 10) || 0);
-    const current = getDraft(member);
     setDrafts((prev) => ({
       ...prev,
-      [memberId]: { ...current, [field]: parsed },
+      [memberId]: parsed,
     }));
   };
 
@@ -339,7 +332,10 @@ export default function HouseholdTab() {
 
         <Text style={styles.sectionLabel}>Members</Text>
         {activeMembers.map((member) => {
-          const draft = getDraft(member);
+          const isPayer = member.role === 'payer';
+          const canEditSessions =
+            member.role !== 'payer' && member.status === 'active';
+          const draftSessions = getDraftSessions(member);
           const isDirty = drafts[member.id] != null;
           return (
             <Card key={member.id} style={styles.memberCard}>
@@ -355,30 +351,34 @@ export default function HouseholdTab() {
                     </Text>
                   </View>
                 </View>
-                <Text style={styles.quotaLabel}>Sessions / week</Text>
-                <TextInput
-                  style={styles.input}
-                  value={String(draft.sessions)}
-                  onChangeText={(v) => setDraftField(member.id, 'sessions', v)}
-                  keyboardType="number-pad"
-                />
-                <Text style={styles.quotaLabel}>Meal slots / week</Text>
-                <TextInput
-                  style={styles.input}
-                  value={String(draft.meals)}
-                  onChangeText={(v) => setDraftField(member.id, 'meals', v)}
-                  keyboardType="number-pad"
-                />
-                {isDirty ? (
-                  <Button
-                    mode="outlined"
-                    onPress={() => handleUpdateQuotas(member)}
-                    loading={quotasLoading}
-                    disabled={quotasLoading || sessionsOver || mealsOver}
-                    style={styles.memberAction}
-                  >
-                    Update quotas
-                  </Button>
+                {isPayer ? (
+                  <>
+                    <Text style={styles.quotaLabel}>Sessions / week</Text>
+                    <Text style={styles.payerSessionsValue}>
+                      {payerSessions} remaining (assigned automatically)
+                    </Text>
+                  </>
+                ) : canEditSessions ? (
+                  <>
+                    <Text style={styles.quotaLabel}>Sessions / week</Text>
+                    <TextInput
+                      style={styles.input}
+                      value={String(draftSessions)}
+                      onChangeText={(v) => setDraftSessions(member.id, v)}
+                      keyboardType="number-pad"
+                    />
+                    {isDirty ? (
+                      <Button
+                        mode="outlined"
+                        onPress={() => handleUpdateQuotas(member)}
+                        loading={quotasLoading}
+                        disabled={quotasLoading || sessionsOver}
+                        style={styles.memberAction}
+                      >
+                        Update sessions
+                      </Button>
+                    ) : null}
+                  </>
                 ) : null}
                 {member.status === 'invited' ? (
                   <Button
@@ -407,17 +407,14 @@ export default function HouseholdTab() {
         })}
 
         <Text style={styles.poolLine}>
-          Sessions: {totals.sessions} / {sessionPoolFromSub} · Meal slots: {totals.meals} /{' '}
-          {mealPool}
+          Assigned to members: {assignedSessions} / {sessionPoolFromSub} · You:{' '}
+          {payerSessions} sessions
         </Text>
         {sessionsOver ? (
           <Text style={styles.overCap}>Sessions exceed household limit.</Text>
         ) : null}
-        {mealsOver ? (
-          <Text style={styles.overCap}>Meal slots exceed household limit.</Text>
-        ) : null}
-        {hasDirtyQuotas && !sessionsOver && !mealsOver ? (
-          <Text style={styles.hint}>Update quotas on each changed member above.</Text>
+        {hasDirtyQuotas && !sessionsOver ? (
+          <Text style={styles.hint}>Update sessions on each changed member above.</Text>
         ) : null}
       </ScrollView>
 
@@ -517,6 +514,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   quotaLabel: { fontSize: 14, color: GRAY_600, marginBottom: 4, marginTop: 4 },
+  payerSessionsValue: {
+    fontSize: 16,
+    color: '#101928',
+    marginBottom: 8,
+  },
   memberAction: { marginTop: 8 },
   poolLine: { fontSize: 14, color: GRAY_600, marginTop: 8 },
   overCap: { fontSize: 14, color: '#b91c1c', marginTop: 4 },

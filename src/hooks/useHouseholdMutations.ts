@@ -64,15 +64,13 @@ export default function useHouseholdMutations() {
       {
         memberId: number;
         weeklySessionsQuota: number;
-        weeklyMealSlotsQuota: number;
       },
       SubscriptionMember
     >) => {
       setQuotasLoading(true);
-      const { memberId, weeklySessionsQuota, weeklyMealSlotsQuota } = payload;
+      const { memberId, weeklySessionsQuota } = payload;
       const { data, error } = await patchMemberQuotas(memberId, {
         weeklySessionsQuota,
-        weeklyMealSlotsQuota,
       });
       if (error) onError?.(String(error));
       else if (data?.member) onSuccess?.(data.member);

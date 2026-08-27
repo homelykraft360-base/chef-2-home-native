@@ -14,7 +14,10 @@ import { signOut } from '../../api/authApi';
 import {
   acceptInvite,
   acceptInviteAddress,
+  acceptInviteAddressMine,
+  acceptInviteMine,
   fetchInvitePreview,
+  fetchPendingInvite,
 } from '../../api/subscriptionMembersApi';
 import { CHEF_ORANGE, GRAY_600 } from '../../constants/theme';
 import type { RootStackParamList } from '../../navigation/types';
@@ -42,6 +45,7 @@ export default function AcceptInviteScreen({ route, navigation }: Props) {
   );
 
   const token = route.params?.token ?? pendingToken ?? '';
+  const [useMineFlow, setUseMineFlow] = useState(false);
   const [step, setStep] = useState<Step>('preview');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -55,30 +59,51 @@ export default function AcceptInviteScreen({ route, navigation }: Props) {
   );
 
   useEffect(() => {
-    if (!token) {
-      setErrorCopy(getInviteErrorCopy('missing_token'));
-      setStep('error');
-      setLoading(false);
+    if (token) {
+      dispatch(setPendingInviteToken(token));
+      void loadPreview(token);
       return;
     }
-    dispatch(setPendingInviteToken(token));
-    void loadPreview(token);
+    void loadPendingInvite();
   }, [token, dispatch]);
+
+  const applyPreview = (preview: {
+    inviterFirstName: string;
+    planName: string;
+    payerVisitLocation?: string;
+    step?: 'preview' | 'address';
+  }) => {
+    setInviterFirstName(preview.inviterFirstName);
+    setPlanName(preview.planName);
+    setPayerVisitLocation(
+      preview.payerVisitLocation as LagosLocation | undefined,
+    );
+    dispatch(setCachedPayerFirstName(preview.inviterFirstName));
+    setStep(preview.step === 'address' ? 'address' : 'preview');
+  };
+
+  const loadPendingInvite = async () => {
+    setLoading(true);
+    const { invite, error } = await fetchPendingInvite();
+    if (error || !invite) {
+      setErrorCopy(getInviteErrorCopy('missing_token'));
+      setStep('error');
+    } else {
+      setUseMineFlow(true);
+      applyPreview(invite);
+    }
+    setLoading(false);
+  };
 
   const loadPreview = async (inviteToken: string) => {
     setLoading(true);
+    setUseMineFlow(false);
     const { preview, error } = await fetchInvitePreview(inviteToken);
     if (error || !preview) {
       setErrorCopy(mapInviteError(String(error)));
       setStep('error');
     } else {
-      setInviterFirstName(preview.inviterFirstName);
-      setPlanName(preview.planName);
-      setPayerVisitLocation(
-        preview.payerVisitLocation as LagosLocation | undefined,
-      );
-      dispatch(setCachedPayerFirstName(preview.inviterFirstName));
-      setStep('preview');
+      applyPreview(preview);
     }
     setLoading(false);
   };
@@ -93,9 +118,12 @@ export default function AcceptInviteScreen({ route, navigation }: Props) {
   };
 
   const handleContinueToAddress = async () => {
-    if (!token) return;
     setActionLoading(true);
-    const { error } = await acceptInvite(token);
+    const { error } = useMineFlow
+      ? await acceptInviteMine()
+      : token
+        ? await acceptInvite(token)
+        : { error: 'missing_token' };
     setActionLoading(false);
     if (error) {
       setErrorCopy(mapInviteError(String(error)));
@@ -108,7 +136,17 @@ export default function AcceptInviteScreen({ route, navigation }: Props) {
   const finishAddress = useCallback(
     async (payload: Parameters<typeof acceptInviteAddress>[0]) => {
       setActionLoading(true);
-      const { error } = await acceptInviteAddress(payload);
+      const { error } = useMineFlow
+        ? await acceptInviteAddressMine({
+            useOwnerAddress: payload.useOwnerAddress,
+            streetAddress1: payload.streetAddress1,
+            streetAddress2: payload.streetAddress2,
+            city: payload.city,
+            state: payload.state,
+            visitLocation: payload.visitLocation,
+            localArea: payload.localArea,
+          })
+        : await acceptInviteAddress(payload);
       setActionLoading(false);
       if (error) {
         setErrorCopy(mapInviteError(String(error)));
@@ -118,7 +156,7 @@ export default function AcceptInviteScreen({ route, navigation }: Props) {
       dispatch(setPendingInviteToken(null));
       setStep('success');
     },
-    [dispatch],
+    [dispatch, useMineFlow],
   );
 
   const handleSubmitOwn = (address: {
@@ -129,7 +167,7 @@ export default function AcceptInviteScreen({ route, navigation }: Props) {
     localArea: string;
   }) => {
     void finishAddress({
-      token,
+      ...(useMineFlow || !token ? {} : { token }),
       useOwnerAddress: false,
       streetAddress1: address.streetAddress1,
       streetAddress2: address.streetAddress2,
@@ -141,7 +179,10 @@ export default function AcceptInviteScreen({ route, navigation }: Props) {
   };
 
   const handleSubmitSame = () => {
-    void finishAddress({ token, useOwnerAddress: true });
+    void finishAddress({
+      ...(useMineFlow || !token ? {} : { token }),
+      useOwnerAddress: true,
+    });
   };
 
   const goHome = () => {

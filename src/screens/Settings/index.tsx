@@ -16,17 +16,14 @@ import { signOutUser } from '../../store/authSlice';
 import { CHEF_ORANGE, GRAY_600 } from '../../constants/theme';
 
 import EditProfileTab from './EditProfileTab';
-import HouseholdTab from './HouseholdTab';
 import PreferencesTab from './PreferencesTab';
 import SecuritySettingsTab from './SecuritySettingsTab';
-import useHouseholdEntitlement from '../../hooks/useHouseholdEntitlement';
 
-type TabId = 'edit' | 'preferences' | 'security' | 'household';
+type TabId = 'edit' | 'preferences' | 'security';
 
 export default function SettingsScreen() {
   const dispatch = useDispatch();
   const { user, loading } = useGetCurrentUserDetails();
-  const { isPayer } = useHouseholdEntitlement();
   const [tab, setTab] = useState<TabId>('edit');
   const [snackbarVisible, setSnackbarVisible] = useState(false);
 
@@ -99,22 +96,6 @@ export default function SettingsScreen() {
             </Text>
             {tab === 'security' && <View style={styles.tabIndicator} />}
           </TouchableOpacity>
-          {isPayer ? (
-            <TouchableOpacity
-              onPress={() => setTab('household')}
-              style={styles.tab}
-            >
-              <Text
-                style={[
-                  styles.tabText,
-                  tab === 'household' && styles.tabTextActive,
-                ]}
-              >
-                Household
-              </Text>
-              {tab === 'household' && <View style={styles.tabIndicator} />}
-            </TouchableOpacity>
-          ) : null}
         </ScrollView>
       </View>
       <View style={styles.tabContent}>
@@ -123,7 +104,6 @@ export default function SettingsScreen() {
         {tab === 'security' && user ? (
           <SecuritySettingsTab onSaved={notifySaved} />
         ) : null}
-        {tab === 'household' && isPayer ? <HouseholdTab /> : null}
       </View>
       <TouchableOpacity
         style={styles.signOutFab}

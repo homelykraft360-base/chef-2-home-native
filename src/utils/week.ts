@@ -101,18 +101,61 @@ function sundayBeforeOrOn(d: Date): Date {
   return out;
 }
 
+export type VisitingDaysInput =
+  | Partial<Record<DayOfWeek, string>>
+  | Record<string, string>
+  | string
+  | null
+  | undefined;
+
+function normalizeVisitingDays(
+  visitingDays: VisitingDaysInput,
+): Record<string, string> {
+  if (!visitingDays) return {};
+  if (typeof visitingDays === 'string') {
+    try {
+      const parsed = JSON.parse(visitingDays) as Record<string, string>;
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+  return visitingDays as Record<string, string>;
+}
+
+/** True when at least one visit in the week is on or after subscription start. */
+export function weekHasVisitOnOrAfterStart(
+  weekStart: string,
+  visitingDays: Record<string, string>,
+  periodStart: Date,
+): boolean {
+  for (const [rawDay, timeOfDay] of Object.entries(visitingDays)) {
+    const day = rawDay.toLowerCase() as DayOfWeek;
+    if (!(day in DAY_INDEX)) continue;
+    if (visitDateTime(weekStart, day, timeOfDay) >= periodStart) {
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Sunday-starting weeks that fall within the subscription's active period.
  * Starts at max(today, subscription start) and ends at the last Sunday whose
- * week overlaps the subscription's end. */
+ * week overlaps the subscription's end. Skips weeks with no visiting day on or
+ * after the subscription start (e.g. pay Friday with Mon/Thu visits → next week). */
 export function weekOptionsForSubscription(
   startIso: string | null | undefined,
   endIso: string | null | undefined,
+  visitingDays?: VisitingDaysInput,
 ): string[] {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const periodStart = startIso ? new Date(startIso) : today;
+  const periodStartDt = startIso ? new Date(startIso) : new Date(today);
   const periodEnd = endIso ? new Date(endIso) : null;
   if (!periodEnd || periodEnd < today) return [];
+
+  const days = normalizeVisitingDays(visitingDays);
 
   const firstSunday = sundayBeforeOrOn(
     periodStart > today ? periodStart : today,
@@ -122,8 +165,23 @@ export function weekOptionsForSubscription(
   const weeks: string[] = [];
   const cursor = new Date(firstSunday);
   while (cursor <= lastSunday) {
-    weeks.push(formatDate(cursor));
+    const weekStart = formatDate(cursor);
+    if (
+      Object.keys(days).length === 0 ||
+      weekHasVisitOnOrAfterStart(weekStart, days, periodStartDt)
+    ) {
+      weeks.push(weekStart);
+    }
     cursor.setDate(cursor.getDate() + 7);
   }
   return weeks;
+}
+
+export function firstPlanWeekForSubscription(
+  startIso: string | null | undefined,
+  endIso: string | null | undefined,
+  visitingDays?: VisitingDaysInput,
+): string | null {
+  const weeks = weekOptionsForSubscription(startIso, endIso, visitingDays);
+  return weeks[0] ?? null;
 }
