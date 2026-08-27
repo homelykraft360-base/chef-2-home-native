@@ -31,7 +31,7 @@ export default function SubscriptionScreen() {
   const [modalVisible, setModalVisible] = useState(false);
 
   const { subscription, setSubscription, loading, error, refetch } = useGetSubscription();
-  const { isActiveMember, isPayer, householdManagement } =
+  const { isActiveMember, isPayer, householdManagement, cachedPayerFirstName } =
     useHouseholdEntitlement(subscription);
   const { preference, loading: loadingPreferences } = useGetPreference();
   const { toggleAutoRenewal, loading: toggling } = useToggleAutoRenew();
@@ -150,9 +150,21 @@ export default function SubscriptionScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Subscription details</Text>
-        {isActiveMember && householdManagement === 'payer_assigns' ? (
-          <Text style={styles.memberBanner}>Your payer manages visit days.</Text>
+        <Text style={styles.title}>
+          {isActiveMember ? 'Household plan' : 'Subscription details'}
+        </Text>
+        {isActiveMember ? (
+          <View style={styles.memberBannerCard}>
+            <Text style={styles.memberBannerTitle}>Household member</Text>
+            <Text style={styles.memberBanner}>
+              You're on {cachedPayerFirstName ?? 'your payer'}'s plan. You can't
+              change billing, auto-renew, or other subscription settings — only
+              your meals and visits.
+              {householdManagement === 'payer_assigns'
+                ? ' Your payer manages visit days for the household.'
+                : ''}
+            </Text>
+          </View>
         ) : null}
         {showRenew ? (
           <View style={styles.renewBanner}>
@@ -261,11 +273,24 @@ const styles = StyleSheet.create({
   },
   errorSub: { fontSize: 14, color: '#6b7280', textAlign: 'center' },
   title: { fontSize: 22, fontWeight: '700', marginBottom: 24 },
+  memberBannerCard: {
+    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  memberBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0c4a6e',
+    marginBottom: 6,
+  },
   memberBanner: {
     fontSize: 14,
-    color: '#6b7280',
-    marginTop: -12,
-    marginBottom: 16,
+    color: '#0369a1',
+    lineHeight: 20,
   },
   renewBanner: {
     backgroundColor: '#fffbeb',
