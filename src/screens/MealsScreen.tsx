@@ -316,11 +316,26 @@ export default function MealsScreen() {
   const [pendingDayOwners, setPendingDayOwners] = useState<
     Partial<Record<DayOfWeek, number>>
   >({});
+  const pendingDayOwnersRef = useRef(pendingDayOwners);
+  pendingDayOwnersRef.current = pendingDayOwners;
   const collapsedInitialized = useRef(false);
   const seededContextKey = useRef<string | null>(null);
   const planningContextKey = showMemberPicker
     ? selectedWeek
     : `${selectedWeek}:${targetUserId ?? 'self'}`;
+
+  const householdPlansSeedKey = useMemo(() => {
+    if (!showMemberPicker) return planningContextKey;
+    const planIds = Object.entries(householdPlansByUserId)
+      .map(([userId, plan]) => {
+        const dayCount =
+          plan.days?.filter((d) => d.meals.length > 0).length ?? 0;
+        return `${userId}:${plan.id}:${dayCount}`;
+      })
+      .sort()
+      .join(',');
+    return `${planningContextKey}|${planIds}`;
+  }, [showMemberPicker, planningContextKey, householdPlansByUserId]);
 
   const planDayMap = useMemo(() => {
     const map = new Map<DayOfWeek, MealPlanDay>();
@@ -468,14 +483,18 @@ export default function MealsScreen() {
     }
 
     if (showMemberPicker) {
+      if (seededContextKey.current === householdPlansSeedKey) {
+        return;
+      }
       const merged = mergeHouseholdWeekPlans(visitingDays, householdPlansByUserId);
+      const pending = pendingDayOwnersRef.current;
       setSelections((prev) => {
         const next = { ...merged.selections };
         for (const { day } of visitingDays) {
-          const pending = pendingDayOwners[day];
+          const pendingOwner = pending[day];
           const localCount = prev[day]?.size ?? 0;
           const serverCount = merged.selections[day]?.size ?? 0;
-          if (pending != null || localCount > serverCount) {
+          if (pendingOwner != null || localCount > serverCount) {
             next[day] = prev[day] ?? merged.selections[day];
           }
         }
@@ -484,28 +503,30 @@ export default function MealsScreen() {
       setMealSizes((prev) => {
         const next = { ...merged.mealSizes };
         for (const { day } of visitingDays) {
-          const pending = pendingDayOwners[day];
+          const pendingOwner = pending[day];
           const localCount = prev[day] ? Object.keys(prev[day]).length : 0;
           const serverCount = merged.mealSizes[day]
             ? Object.keys(merged.mealSizes[day]).length
             : 0;
-          if (pending != null || localCount > serverCount) {
+          if (pendingOwner != null || localCount > serverCount) {
             next[day] = prev[day] ?? merged.mealSizes[day];
           }
         }
         return next;
       });
       setPendingDayOwners((prev) => {
+        let changed = false;
         const next = { ...prev };
         for (const { day } of visitingDays) {
           const serverOwner = merged.dayOwners[day];
           if (serverOwner != null && next[day] === serverOwner) {
             delete next[day];
+            changed = true;
           }
         }
-        return next;
+        return changed ? next : prev;
       });
-      seededContextKey.current = planningContextKey;
+      seededContextKey.current = householdPlansSeedKey;
       setActiveDay((prev) => (prev && merged.selections[prev] ? prev : visitingDays[0].day));
       return;
     }
@@ -525,9 +546,9 @@ export default function MealsScreen() {
     visitingDays,
     planLoading,
     planningContextKey,
+    householdPlansSeedKey,
     showMemberPicker,
     householdPlansByUserId,
-    pendingDayOwners,
   ]);
 
   useEffect(() => {
