@@ -469,9 +469,42 @@ export default function MealsScreen() {
 
     if (showMemberPicker) {
       const merged = mergeHouseholdWeekPlans(visitingDays, householdPlansByUserId);
-      setSelections(merged.selections);
-      setMealSizes(merged.mealSizes);
-      setPendingDayOwners({});
+      setSelections((prev) => {
+        const next = { ...merged.selections };
+        for (const { day } of visitingDays) {
+          const pending = pendingDayOwners[day];
+          const localCount = prev[day]?.size ?? 0;
+          const serverCount = merged.selections[day]?.size ?? 0;
+          if (pending != null || localCount > serverCount) {
+            next[day] = prev[day] ?? merged.selections[day];
+          }
+        }
+        return next;
+      });
+      setMealSizes((prev) => {
+        const next = { ...merged.mealSizes };
+        for (const { day } of visitingDays) {
+          const pending = pendingDayOwners[day];
+          const localCount = prev[day] ? Object.keys(prev[day]).length : 0;
+          const serverCount = merged.mealSizes[day]
+            ? Object.keys(merged.mealSizes[day]).length
+            : 0;
+          if (pending != null || localCount > serverCount) {
+            next[day] = prev[day] ?? merged.mealSizes[day];
+          }
+        }
+        return next;
+      });
+      setPendingDayOwners((prev) => {
+        const next = { ...prev };
+        for (const { day } of visitingDays) {
+          const serverOwner = merged.dayOwners[day];
+          if (serverOwner != null && next[day] === serverOwner) {
+            delete next[day];
+          }
+        }
+        return next;
+      });
       seededContextKey.current = planningContextKey;
       setActiveDay((prev) => (prev && merged.selections[prev] ? prev : visitingDays[0].day));
       return;
@@ -494,6 +527,7 @@ export default function MealsScreen() {
     planningContextKey,
     showMemberPicker,
     householdPlansByUserId,
+    pendingDayOwners,
   ]);
 
   useEffect(() => {
@@ -601,18 +635,19 @@ export default function MealsScreen() {
 
   const saveHouseholdWeek = async (): Promise<boolean> => {
     const clearOps: Array<{ userId: number; day: DayOfWeek }> = [];
+    const plansAfterClear = { ...householdPlansByUserId };
+
     for (const { day } of visitingDays) {
       const serverOwner = householdDayAssignments[day]?.userId;
       const targetOwner = effectiveDayOwner(day);
-      const hasMeals = (selections[day]?.size ?? 0) > 0;
-      if (!serverOwner) continue;
-      if (!hasMeals || (targetOwner != null && serverOwner !== targetOwner)) {
-        clearOps.push({ userId: serverOwner, day });
+      if (!serverOwner || targetOwner == null || serverOwner === targetOwner) {
+        continue;
       }
+      clearOps.push({ userId: serverOwner, day });
     }
 
     for (const { userId, day } of clearOps) {
-      const plan = householdPlansByUserId[userId];
+      const plan = plansAfterClear[userId];
       if (!plan) continue;
       const result = await updateMealPlan(
         plan.id,
@@ -623,18 +658,27 @@ export default function MealsScreen() {
         showQuotaError(String(result.error));
         return false;
       }
+      if (result.mealPlan) {
+        plansAfterClear[userId] = result.mealPlan;
+      }
     }
 
     const daysByOwner = new Map<number, MealPlanDayInput[]>();
     for (const { day, timeOfDay } of visitingDays) {
       if (dayLocked(selectedWeek, day, timeOfDay)) continue;
-      const input = buildDayInput(day);
-      if (!input) continue;
       const owner = effectiveDayOwner(day);
       if (owner == null) continue;
-      const bucket = daysByOwner.get(owner) ?? [];
-      bucket.push(input);
-      daysByOwner.set(owner, bucket);
+      const input = buildDayInput(day);
+      const serverOwner = householdDayAssignments[day]?.userId;
+      if (input) {
+        const bucket = daysByOwner.get(owner) ?? [];
+        bucket.push(input);
+        daysByOwner.set(owner, bucket);
+      } else if (serverOwner === owner) {
+        const bucket = daysByOwner.get(owner) ?? [];
+        bucket.push({ dayOfWeek: day, mealIds: [], mealNotes: [] });
+        daysByOwner.set(owner, bucket);
+      }
     }
 
     if (daysByOwner.size === 0 && clearOps.length === 0) {
@@ -646,7 +690,7 @@ export default function MealsScreen() {
     }
 
     for (const [userId, days] of daysByOwner) {
-      const plan = householdPlansByUserId[userId];
+      const plan = plansAfterClear[userId];
       const notesPayload =
         userId === ownerUserId ? shoppingNotes.trim() || null : undefined;
       const result = plan
