@@ -11,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { Button, Snackbar } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSelector } from 'react-redux';
@@ -258,15 +258,6 @@ export default function MealsScreen() {
     payerUserId: subscription?.userId,
     members,
   });
-
-  useFocusEffect(
-    useCallback(() => {
-      void refetchPlan();
-      if (showMemberPicker) {
-        void refetchHouseholdAssignments();
-      }
-    }, [refetchPlan, refetchHouseholdAssignments, showMemberPicker]),
-  );
 
   const { saveMealPlan, loading: saving } = useSaveMealPlan();
   const [bulkSaving, setBulkSaving] = useState(false);

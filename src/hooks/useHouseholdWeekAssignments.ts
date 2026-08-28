@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import { fetchMealPlansInRange } from '../api/mealPlanApi';
-import type { DayOfWeek, MealPlan, SubscriptionMember } from '../types';
-import { mealPlanMatchesContext } from '../utils/mealPlan.utils';
+import { fetchHouseholdWeekAssignments } from '../api/mealPlanApi';
+import type { DayOfWeek, SubscriptionMember } from '../types';
 
 export type HouseholdDayAssignment = {
   userId: number;
@@ -21,22 +20,16 @@ function memberShortLabel(member: SubscriptionMember, selfUserId?: number): stri
   return 'Member';
 }
 
-export function assignmentsFromPlans(
-  entries: { userId: number; label: string; plan: MealPlan | null }[],
-): HouseholdWeekAssignments {
-  const map: HouseholdWeekAssignments = {};
-  for (const { userId, label, plan } of entries) {
-    for (const day of plan?.days ?? []) {
-      if (day.meals.length > 0) {
-        map[day.dayOfWeek] = {
-          userId,
-          label,
-          mealCount: day.meals.length,
-        };
-      }
-    }
-  }
-  return map;
+function labelForUserId(
+  userId: number,
+  payerUserId: number,
+  members: SubscriptionMember[],
+  selfUserId?: number,
+): string {
+  if (userId === payerUserId) return 'You';
+  const member = members.find((m) => m.userId === userId);
+  if (member) return memberShortLabel(member, selfUserId);
+  return 'Member';
 }
 
 type Options = {
@@ -47,7 +40,7 @@ type Options = {
   members: SubscriptionMember[];
 };
 
-/** Loads every household member's plan for a week (payer meal assignment). */
+/** Loads household visit-day ownership for a week in a single API call. */
 export default function useHouseholdWeekAssignments({
   weekStart,
   enabled,
@@ -64,47 +57,23 @@ export default function useHouseholdWeekAssignments({
       return;
     }
 
-    const targets: { userId: number; label: string; targetUserId?: number }[] = [
-      { userId: payerUserId, label: 'You', targetUserId: undefined },
-    ];
-    for (const member of members) {
-      if (
-        member.status !== 'active' ||
-        member.userId == null ||
-        member.userId === payerUserId
-      ) {
-        continue;
-      }
-      targets.push({
-        userId: member.userId,
-        label: memberShortLabel(member, selfUserId),
-        targetUserId: member.userId,
-      });
+    setLoading(true);
+    const { assignments: rows, error } = await fetchHouseholdWeekAssignments(weekStart);
+    if (error) {
+      setAssignments({});
+      setLoading(false);
+      return;
     }
 
-    setLoading(true);
-    const results = await Promise.all(
-      targets.map(async ({ userId, label, targetUserId }) => {
-        const { mealPlans, error } = await fetchMealPlansInRange(
-          weekStart,
-          weekStart,
-          targetUserId,
-        );
-        const plan =
-          error || !mealPlans[0]
-            ? null
-            : mealPlanMatchesContext(
-                  mealPlans[0],
-                  weekStart,
-                  targetUserId,
-                  userId,
-                )
-              ? mealPlans[0]
-              : null;
-        return { userId, label, plan };
-      }),
-    );
-    setAssignments(assignmentsFromPlans(results));
+    const map: HouseholdWeekAssignments = {};
+    for (const row of rows) {
+      map[row.dayOfWeek as DayOfWeek] = {
+        userId: row.userId,
+        label: labelForUserId(row.userId, payerUserId, members, selfUserId),
+        mealCount: row.mealCount,
+      };
+    }
+    setAssignments(map);
     setLoading(false);
   }, [enabled, weekStart, payerUserId, members, selfUserId]);
 

@@ -39,6 +39,23 @@ export const fetchMealPlansInRange = async (
   return { mealPlans: data?.mealPlans ?? [], error };
 };
 
+export type HouseholdWeekAssignmentRow = {
+  userId: number;
+  dayOfWeek: string;
+  mealCount: number;
+};
+
+export const fetchHouseholdWeekAssignments = async (weekStart: string) => {
+  const { data, error } = await tryCatch<{
+    weekStart: string;
+    assignments: HouseholdWeekAssignmentRow[];
+  }>(clientApi.get(`${BASE_PATH}household-week`, { params: { weekStart } }));
+  return {
+    assignments: data?.assignments ?? [],
+    error,
+  };
+};
+
 export const createMealPlan = async (
   payload: MealPlanCreateRequest,
   targetUserId?: number,
