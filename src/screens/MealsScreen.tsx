@@ -11,9 +11,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Button, Snackbar } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useSelector } from 'react-redux';
 
 import {
   createMealPlan,
@@ -32,14 +33,17 @@ import {
   GRAY_600,
 } from '../constants/theme';
 import useGetMealPlanForWeek from '../hooks/useGetMealPlanForWeek';
+import useHouseholdWeekAssignments from '../hooks/useHouseholdWeekAssignments';
 import useGetSubscription from '../hooks/useGetSubscription';
 import useHouseholdEntitlement from '../hooks/useHouseholdEntitlement';
 import useHouseholdMembers from '../hooks/useHouseholdMembers';
 import useRenewSubscription from '../hooks/useRenewSubscription';
 import useSaveMealPlan from '../hooks/useSaveMealPlan';
+import { currentUser } from '../store/authSlice';
 import type {
   DayOfWeek,
   Meal,
+  MealPlan,
   MealPlanDay,
   MealPlanDayInput,
   MealSelectionSource,
@@ -55,6 +59,7 @@ import {
   weekRangeLabel,
 } from '../utils/week';
 import { isSubscriptionEntitled, subscriptionNeedsRenew } from '../utils/subscription.utils';
+import { mealPlanMatchesContext } from '../utils/mealPlan.utils';
 import { capitalizeString } from '../utils/url.utils';
 
 const MAX_PER_DAY = 5;
@@ -138,8 +143,12 @@ function seedSelectionsFromPlan(
   return next;
 }
 
+/** Keeps payer "planning for" choice while switching weeks/days on Meals tab. */
+let persistedPlanningMemberUserId: number | null = null;
+
 export default function MealsScreen() {
   const navigation = useNavigation();
+  const user = useSelector(currentUser);
   const { subscription, setSubscription, loading: subscriptionLoading } = useGetSubscription();
   const {
     isPayer,
@@ -148,7 +157,13 @@ export default function MealsScreen() {
     householdManagement,
   } = useHouseholdEntitlement();
   const { members } = useHouseholdMembers(isPayer);
-  const [selectedMemberUserId, setSelectedMemberUserId] = useState<number | null>(null);
+  const [selectedMemberUserId, setSelectedMemberUserIdState] = useState<number | null>(
+    () => persistedPlanningMemberUserId,
+  );
+  const setSelectedMemberUserId = useCallback((userId: number | null) => {
+    persistedPlanningMemberUserId = userId;
+    setSelectedMemberUserIdState(userId);
+  }, []);
   const [quotaSnackbar, setQuotaSnackbar] = useState(false);
 
   const { loading: renewLoading, renew } = useRenewSubscription(subscription, {
@@ -158,6 +173,9 @@ export default function MealsScreen() {
   const targetUserId =
     selectedMemberUserId != null ? selectedMemberUserId : undefined;
 
+  const ownerUserId =
+    targetUserId ?? user?.id ?? subscription?.userId ?? undefined;
+
   const memberOptions = useMemo(
     () =>
       members.filter(
@@ -165,6 +183,9 @@ export default function MealsScreen() {
       ),
     [members],
   );
+
+  const showMemberPicker =
+    isPayer && householdManagement === 'payer_assigns' && memberOptions.length > 0;
 
   const mealsReadOnly =
     householdManagement === 'payer_assigns' && isActiveMember;
@@ -211,7 +232,41 @@ export default function MealsScreen() {
     loading: planLoading,
     error: planError,
     refetch: refetchPlan,
+    setMealPlan,
   } = useGetMealPlanForWeek(selectedWeek, targetUserId);
+
+  const contextMealPlan = useMemo(
+    () =>
+      mealPlanMatchesContext(
+        mealPlan,
+        selectedWeek,
+        targetUserId,
+        ownerUserId,
+      )
+        ? mealPlan
+        : null,
+    [mealPlan, selectedWeek, targetUserId, ownerUserId],
+  );
+
+  const {
+    assignments: householdDayAssignments,
+    refetch: refetchHouseholdAssignments,
+  } = useHouseholdWeekAssignments({
+    weekStart: selectedWeek,
+    enabled: showMemberPicker,
+    selfUserId: user?.id,
+    payerUserId: subscription?.userId,
+    members,
+  });
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetchPlan();
+      if (showMemberPicker) {
+        void refetchHouseholdAssignments();
+      }
+    }, [refetchPlan, refetchHouseholdAssignments, showMemberPicker]),
+  );
 
   const { saveMealPlan, loading: saving } = useSaveMealPlan();
   const [bulkSaving, setBulkSaving] = useState(false);
@@ -231,12 +286,14 @@ export default function MealsScreen() {
     () => new Set(),
   );
   const collapsedInitialized = useRef(false);
+  const seededContextKey = useRef<string | null>(null);
+  const planningContextKey = `${selectedWeek}:${targetUserId ?? 'self'}`;
 
   const planDayMap = useMemo(() => {
     const map = new Map<DayOfWeek, MealPlanDay>();
-    for (const d of mealPlan?.days ?? []) map.set(d.dayOfWeek, d);
+    for (const d of contextMealPlan?.days ?? []) map.set(d.dayOfWeek, d);
     return map;
-  }, [mealPlan?.days]);
+  }, [contextMealPlan?.days]);
 
   const mealSections = useMemo(() => {
     if (!meals?.length) return [];
@@ -292,8 +349,38 @@ export default function MealsScreen() {
       setQuotaSnackbar(true);
       return;
     }
+    if (err.toLowerCase().includes('household_day_already_claimed')) {
+      Alert.alert(
+        'Day already assigned',
+        'Only one household member can be planned per visit day. Pick another day or change who you are planning for.',
+      );
+      void refetchHouseholdAssignments();
+      return;
+    }
     Alert.alert('Could not save', err);
   };
+
+  const applyPlanToLocalState = useCallback(
+    (plan: MealPlan) => {
+      const seeded = seedSelectionsFromPlan(visitingDays, plan.days);
+      const seededSizes = seedMealSizesFromPlan(visitingDays, plan.days);
+      setSelections(seeded);
+      setMealSizes(seededSizes);
+      seededContextKey.current = planningContextKey;
+      setShoppingNotes(plan.shoppingNotes ?? '');
+    },
+    [visitingDays, planningContextKey],
+  );
+
+  const dayClaimedByOther = useCallback(
+    (day: DayOfWeek) => {
+      if (!showMemberPicker || ownerUserId == null) return null;
+      const assignment = householdDayAssignments[day];
+      if (!assignment || assignment.userId === ownerUserId) return null;
+      return assignment;
+    },
+    [showMemberPicker, ownerUserId, householdDayAssignments],
+  );
 
   useEffect(() => {
     if (!isActive) return;
@@ -321,22 +408,32 @@ export default function MealsScreen() {
       setSelections({} as DaySelections);
       setMealSizes({} as DayMealSizes);
       setActiveDay(null);
+      seededContextKey.current = null;
       return;
     }
-    const seeded = mealPlan
-      ? seedSelectionsFromPlan(visitingDays, mealPlan.days)
+    if (planLoading) {
+      if (seededContextKey.current !== planningContextKey) {
+        setSelections(emptySelections(visitingDays));
+        setMealSizes(emptyMealSizes(visitingDays));
+      }
+      return;
+    }
+
+    const seeded = contextMealPlan
+      ? seedSelectionsFromPlan(visitingDays, contextMealPlan.days)
       : emptySelections(visitingDays);
-    const seededSizes = mealPlan
-      ? seedMealSizesFromPlan(visitingDays, mealPlan.days)
+    const seededSizes = contextMealPlan
+      ? seedMealSizesFromPlan(visitingDays, contextMealPlan.days)
       : emptyMealSizes(visitingDays);
     setSelections(seeded);
     setMealSizes(seededSizes);
+    seededContextKey.current = planningContextKey;
     setActiveDay((prev) => (prev && seeded[prev] ? prev : visitingDays[0].day));
-  }, [mealPlan, visitingDays]);
+  }, [contextMealPlan, visitingDays, planLoading, planningContextKey]);
 
   useEffect(() => {
-    setShoppingNotes(mealPlan?.shoppingNotes ?? '');
-  }, [mealPlan?.id, mealPlan?.shoppingNotes]);
+    setShoppingNotes(contextMealPlan?.shoppingNotes ?? '');
+  }, [contextMealPlan?.id, contextMealPlan?.shoppingNotes]);
 
   const dayLocked = useCallback(
     (weekStart: string, day: DayOfWeek, timeOfDay: string) =>
@@ -350,23 +447,23 @@ export default function MealsScreen() {
     return new Set([cur, addWeeks(cur, 1)]);
   }, []);
   const canReviewSelectedWeek = payableWeeks.has(selectedWeek);
-  const mealPlanIdForReview = mealPlan?.id;
+  const mealPlanIdForReview = contextMealPlan?.id;
   /** Past weeks: still show Review when weekly ingredients were never paid. */
   const unpaidPastIngredientWeek =
     mealPlanIdForReview != null &&
-    mealPlan?.ingredientPaymentStatus === 'unpaid' &&
+    contextMealPlan?.ingredientPaymentStatus === 'unpaid' &&
     selectedWeek < currentWeekStart();
   const canOpenIngredientCheckout =
     mealPlanIdForReview != null &&
     (canReviewSelectedWeek || unpaidPastIngredientWeek);
 
-  const ingredientsPaidForWeek = mealPlan?.ingredientPaymentStatus === 'paid';
+  const ingredientsPaidForWeek = contextMealPlan?.ingredientPaymentStatus === 'paid';
 
   useEffect(() => {
-    if (mealPlan?.ingredientPaymentStatus === 'paid' && applyToAll) {
+    if (contextMealPlan?.ingredientPaymentStatus === 'paid' && applyToAll) {
       setApplyToAll(false);
     }
-  }, [mealPlan?.ingredientPaymentStatus, mealPlan?.weekStart, applyToAll]);
+  }, [contextMealPlan?.ingredientPaymentStatus, contextMealPlan?.weekStart, applyToAll]);
 
   const toggleMeal = useCallback((day: DayOfWeek, mealId: number) => {
     setSelections((prev) => {
@@ -413,6 +510,7 @@ export default function MealsScreen() {
     (weekStart: string): MealPlanDayInput[] =>
       visitingDays
         .filter(({ day, timeOfDay }) => !dayLocked(weekStart, day, timeOfDay))
+        .filter(({ day }) => dayClaimedByOther(day) == null)
         .map(({ day }) => {
           const mealIds = Array.from(selections[day] ?? []);
           return {
@@ -425,7 +523,7 @@ export default function MealsScreen() {
           };
         })
         .filter((d) => d.mealIds.length > 0),
-    [visitingDays, selections, mealSizes, dayLocked],
+    [visitingDays, selections, mealSizes, dayLocked, dayClaimedByOther],
   );
 
   const saveSingleWeek = () => {
@@ -443,16 +541,27 @@ export default function MealsScreen() {
       payload: {
         weekStart: selectedWeek,
         days: payloadDays,
-        existingPlanId: mealPlan?.id,
+        existingPlanId: contextMealPlan?.id,
         shoppingNotes: shoppingNotes.trim() || null,
         targetUserId,
       },
-      onSuccess: () => {
+      onSuccess: (saved) => {
         Alert.alert(
           'Saved',
           `Your meals for ${weekRangeLabel(selectedWeek)} are locked in.`,
         );
-        refetchPlan();
+        if (
+          saved &&
+          mealPlanMatchesContext(saved, selectedWeek, targetUserId, ownerUserId)
+        ) {
+          setMealPlan(saved);
+          applyPlanToLocalState(saved);
+        } else {
+          void refetchPlan();
+        }
+        if (showMemberPicker) {
+          void refetchHouseholdAssignments();
+        }
       },
       onError: showQuotaError,
     });
@@ -517,6 +626,9 @@ export default function MealsScreen() {
         );
       }
       refetchPlan();
+      if (showMemberPicker) {
+        void refetchHouseholdAssignments();
+      }
     } finally {
       setBulkSaving(false);
     }
@@ -548,7 +660,7 @@ export default function MealsScreen() {
     };
 
     const hasMealsToReview =
-      (mealPlan?.days.some((d) => d.meals.length > 0) ?? false) ||
+      (contextMealPlan?.days.some((d) => d.meals.length > 0) ?? false) ||
       visitingDays.some(({ day }) => (selections[day]?.size ?? 0) > 0);
 
     if (ingredientsPaidForWeek) {
@@ -572,8 +684,8 @@ export default function MealsScreen() {
 
     setReviewNavigating(true);
     try {
-      const result = mealPlan?.id
-        ? await updateMealPlan(mealPlan.id, {
+      const result = contextMealPlan?.id
+        ? await updateMealPlan(contextMealPlan.id, {
             days: payloadDays,
             shoppingNotes: shoppingNotes.trim() || null,
           }, targetUserId)
@@ -588,7 +700,23 @@ export default function MealsScreen() {
         return;
       }
 
-      refetchPlan();
+      if (
+        result.mealPlan &&
+        mealPlanMatchesContext(
+          result.mealPlan,
+          selectedWeek,
+          targetUserId,
+          ownerUserId,
+        )
+      ) {
+        setMealPlan(result.mealPlan);
+        applyPlanToLocalState(result.mealPlan);
+      } else {
+        void refetchPlan();
+      }
+      if (showMemberPicker) {
+        void refetchHouseholdAssignments();
+      }
       navigateToReview();
     } finally {
       setReviewNavigating(false);
@@ -693,10 +821,12 @@ export default function MealsScreen() {
   const loadError = mealsError ?? planError;
   const activeDayInfo = visitingDays.find((d) => d.day === activeDay) ?? visitingDays[0];
   const activeSelection = selections[activeDayInfo.day] ?? new Set<number>();
+  const activeDayClaim = dayClaimedByOther(activeDayInfo.day);
   const activeLocked =
     dayLocked(selectedWeek, activeDayInfo.day, activeDayInfo.timeOfDay) ||
     ingredientsPaidForWeek ||
-    mealsReadOnly;
+    mealsReadOnly ||
+    activeDayClaim != null;
   const activePlanDay = planDayMap.get(activeDayInfo.day);
   const activeSourceLabel = activePlanDay && SOURCE_LABEL[activePlanDay.source];
   const savingAny = saving || bulkSaving || reviewNavigating;
@@ -710,7 +840,7 @@ export default function MealsScreen() {
           </Text>
         </View>
       ) : null}
-      {isPayer && householdManagement === 'payer_assigns' && memberOptions.length > 0 ? (
+      {showMemberPicker ? (
         <View style={styles.pickerRow}>
           <Text style={styles.pickerLabel}>Planning for</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -809,16 +939,26 @@ export default function MealsScreen() {
           {visitingDays.map(({ day, timeOfDay }) => {
             const locked =
               dayLocked(selectedWeek, day, timeOfDay) || ingredientsPaidForWeek;
+            const assignment = dayClaimedByOther(day);
+            const claimedByOther = assignment != null;
             const count = selections[day]?.size ?? 0;
             const selected = activeDay === day;
             return (
               <TouchableOpacity
                 key={day}
-                onPress={() => setActiveDay(day)}
+                onPress={() => {
+                  if (claimedByOther) {
+                    setSelectedMemberUserId(assignment.userId);
+                    setActiveDay(day);
+                    return;
+                  }
+                  setActiveDay(day);
+                }}
                 disabled={savingAny}
                 style={[
                   styles.dayChip,
                   selected && styles.dayChipSelected,
+                  claimedByOther && styles.dayChipClaimed,
                   savingAny && styles.chipDisabled,
                 ]}
               >
@@ -835,8 +975,13 @@ export default function MealsScreen() {
                     styles.dayChipMeta,
                     selected && styles.dayChipMetaSelected,
                   ]}
+                  numberOfLines={1}
                 >
-                  {locked ? 'Locked' : `${count}/${MAX_PER_DAY}`}
+                  {locked
+                    ? 'Locked'
+                    : claimedByOther
+                      ? assignment.label
+                      : `${count}/${MAX_PER_DAY}`}
                 </Text>
               </TouchableOpacity>
             );
@@ -849,6 +994,10 @@ export default function MealsScreen() {
           </Text>
           {ingredientsPaidForWeek ? (
             <Text style={styles.lockedTag}>Ingredients paid — selections locked</Text>
+          ) : activeDayClaim ? (
+            <Text style={styles.lockedTag}>
+              {activeDayClaim.label} is planned for this day
+            </Text>
           ) : activeLocked ? (
             <Text style={styles.lockedTag}>Cutoff passed — locked</Text>
           ) : (
@@ -861,7 +1010,7 @@ export default function MealsScreen() {
           ) : null}
         </View>
 
-        {(!ingredientsPaidForWeek || mealPlan?.effectiveShoppingNotes) ? (
+        {(!ingredientsPaidForWeek || contextMealPlan?.effectiveShoppingNotes) ? (
           <TouchableOpacity
             style={styles.notesBtn}
             onPress={() => setNotesSheetOpen(true)}
@@ -894,7 +1043,7 @@ export default function MealsScreen() {
         visible={notesSheetOpen}
         value={
           ingredientsPaidForWeek
-            ? mealPlan?.effectiveShoppingNotes ?? ''
+            ? contextMealPlan?.effectiveShoppingNotes ?? ''
             : shoppingNotes
         }
         onChange={setShoppingNotes}
@@ -1187,6 +1336,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dayChipSelected: { borderColor: CHEF_ORANGE, backgroundColor: '#fff8f0' },
+  dayChipClaimed: { borderColor: '#d1d5db', backgroundColor: '#f3f4f6' },
   dayChipDay: { fontSize: 12, fontWeight: '700', color: CHEF_GREY },
   dayChipDaySelected: { color: CHEF_ORANGE },
   dayChipMeta: { fontSize: 11, color: GRAY_600, marginTop: 2 },

@@ -15,6 +15,8 @@ export default function useGetMealPlanForWeek(
   const load = useCallback(async () => {
     if (!weekStart) {
       setMealPlan(null);
+      setLoading(false);
+      setError(null);
       return;
     }
     setLoading(true);
@@ -30,8 +32,31 @@ export default function useGetMealPlanForWeek(
   }, [weekStart, targetUserId]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!weekStart) {
+      setMealPlan(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setMealPlan(null);
+    setLoading(true);
+    setError(null);
+
+    void fetchMealPlansInRange(weekStart, weekStart, targetUserId).then(
+      ({ mealPlans, error: err }) => {
+        if (cancelled) return;
+        if (err) setError(String(err));
+        else setMealPlan(mealPlans[0] ?? null);
+        setLoading(false);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [weekStart, targetUserId]);
 
   return { mealPlan, loading, error, refetch: load, setMealPlan };
 }

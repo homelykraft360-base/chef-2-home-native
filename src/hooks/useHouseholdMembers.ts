@@ -6,6 +6,8 @@ import type {
   SubscriptionMember,
 } from '../types';
 
+const WEEKS_PER_BILLING_MONTH = 4;
+
 export default function useHouseholdMembers(enabled = true) {
   const [members, setMembers] = useState<SubscriptionMember[]>([]);
   const [seatsUsed, setSeatsUsed] = useState(0);
@@ -33,7 +35,9 @@ export default function useHouseholdMembers(enabled = true) {
       setSeatsRemaining(data.seatsRemaining);
       setSeatCap(data.seatCap);
       setHouseholdManagement(data.subscription.householdManagement);
-      setWeeklySessionsPool(data.subscription.weeklySessions);
+      setWeeklySessionsPool(
+        (data.subscription.weeklySessions ?? 0) * WEEKS_PER_BILLING_MONTH,
+      );
     }
     setLoading(false);
   }, [enabled]);

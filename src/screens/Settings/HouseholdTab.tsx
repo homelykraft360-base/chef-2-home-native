@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import { Button, Card, Snackbar } from 'react-native-paper';
+import { useSelector } from 'react-redux';
 
 import {
   CHEF_ORANGE,
@@ -18,17 +19,30 @@ import {
   GRAY_400,
   GRAY_600,
 } from '../../constants/theme';
+import { currentUser } from '../../store/authSlice';
 import useHouseholdMembers from '../../hooks/useHouseholdMembers';
 import useHouseholdMutations from '../../hooks/useHouseholdMutations';
 import type { HouseholdManagement, SubscriptionMember } from '../../types';
 
-function memberLabel(member: SubscriptionMember): string {
+function memberLabel(
+  member: SubscriptionMember,
+  currentUserId?: number,
+): string {
+  if (currentUserId != null && member.userId === currentUserId) {
+    return 'You';
+  }
   if (member.inviteEmail) return member.inviteEmail;
   if (member.invitePhone) return member.invitePhone;
   return member.userId ? `User #${member.userId}` : 'Member';
 }
 
-function memberChipName(member: SubscriptionMember): string {
+function memberChipName(
+  member: SubscriptionMember,
+  currentUserId?: number,
+): string {
+  if (currentUserId != null && member.userId === currentUserId) {
+    return 'You';
+  }
   if (member.inviteEmail) return member.inviteEmail.split('@')[0];
   if (member.invitePhone) return member.invitePhone;
   return 'Member';
@@ -37,6 +51,7 @@ function memberChipName(member: SubscriptionMember): string {
 type QuotaDraft = number;
 
 export default function HouseholdTab() {
+  const user = useSelector(currentUser);
   const {
     members,
     seatsUsed,
@@ -76,7 +91,7 @@ export default function HouseholdTab() {
     [activeMembers],
   );
 
-  const sessionPoolFromSub = weeklySessionsPool || 4;
+  const sessionPoolFromSub = weeklySessionsPool || 8;
 
   const editableMembers = useMemo(
     () =>
@@ -195,7 +210,7 @@ export default function HouseholdTab() {
       setSnackbar("Can't remove the payer while the subscription is active.");
       return;
     }
-    const name = memberChipName(member);
+    const name = memberChipName(member, user?.id);
     Alert.alert(
       `Remove ${name} from household?`,
       'They will lose access immediately. Their meal plans and visits stay in history but they can\'t use the shared subscription.',
@@ -341,7 +356,9 @@ export default function HouseholdTab() {
             <Card key={member.id} style={styles.memberCard}>
               <Card.Content>
                 <View style={styles.memberHeader}>
-                  <Text style={styles.memberName}>{memberLabel(member)}</Text>
+                  <Text style={styles.memberName}>
+                    {memberLabel(member, user?.id)}
+                  </Text>
                   <View style={styles.badgeRow}>
                     <Text style={styles.badge}>
                       {member.role === 'payer' ? 'Payer' : 'Member'}
@@ -353,14 +370,19 @@ export default function HouseholdTab() {
                 </View>
                 {isPayer ? (
                   <>
-                    <Text style={styles.quotaLabel}>Sessions / week</Text>
+                    <Text style={styles.quotaLabel}>Sessions / month</Text>
                     <Text style={styles.payerSessionsValue}>
-                      {payerSessions} remaining (assigned automatically)
+                      {payerSessions} of {sessionPoolFromSub} for you
+                    </Text>
+                    <Text style={styles.payerSessionsHint}>
+                      {assignedSessions === 0
+                        ? 'Your plan includes this many chef visits per billing month. None are assigned to members yet, so you use all of them.'
+                        : `${assignedSessions} assigned to members below; the rest are yours this month.`}
                     </Text>
                   </>
                 ) : canEditSessions ? (
                   <>
-                    <Text style={styles.quotaLabel}>Sessions / week</Text>
+                    <Text style={styles.quotaLabel}>Sessions / month</Text>
                     <TextInput
                       style={styles.input}
                       value={String(draftSessions)}
@@ -407,8 +429,8 @@ export default function HouseholdTab() {
         })}
 
         <Text style={styles.poolLine}>
-          Assigned to members: {assignedSessions} / {sessionPoolFromSub} · You:{' '}
-          {payerSessions} sessions
+          Household limit: {sessionPoolFromSub} visits/month · Assigned to members:{' '}
+          {assignedSessions} · Your visits: {payerSessions}
         </Text>
         {sessionsOver ? (
           <Text style={styles.overCap}>Sessions exceed household limit.</Text>
@@ -517,6 +539,12 @@ const styles = StyleSheet.create({
   payerSessionsValue: {
     fontSize: 16,
     color: '#101928',
+    marginBottom: 4,
+  },
+  payerSessionsHint: {
+    fontSize: 13,
+    color: GRAY_600,
+    lineHeight: 18,
     marginBottom: 8,
   },
   memberAction: { marginTop: 8 },
