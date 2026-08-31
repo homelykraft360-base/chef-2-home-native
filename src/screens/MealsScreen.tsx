@@ -394,7 +394,21 @@ export default function MealsScreen() {
 
   const showQuotaError = (err: string) => {
     if (err.toLowerCase().includes('quota_exceeded')) {
+      const match = err.match(/billing_days=(\d+)\/(\d+)/i);
+      if (match) {
+        const [, used, cap] = match;
+        setQuotaSnackbar(true);
+        Alert.alert(
+          'Session limit reached',
+          `This member has ${cap} cook-in sessions per billing month and ${used} are already planned. Check Settings → Household session allocation, or remove a visit day from another week.`,
+        );
+        return;
+      }
       setQuotaSnackbar(true);
+      Alert.alert(
+        'Session limit reached',
+        'This member has used their cook-in sessions for the billing month. Check Settings → Household to review session allocation.',
+      );
       return;
     }
     if (err.toLowerCase().includes('household_day_already_claimed')) {
@@ -466,6 +480,10 @@ export default function MealsScreen() {
   }, [isActive]);
 
   useEffect(() => {
+    setPendingDayOwners({});
+  }, [selectedWeek]);
+
+  useEffect(() => {
     if (!visitingDays.length) {
       setSelections({} as DaySelections);
       setMealSizes({} as DayMealSizes);
@@ -487,45 +505,54 @@ export default function MealsScreen() {
         return;
       }
       const merged = mergeHouseholdWeekPlans(visitingDays, householdPlansByUserId);
-      const pending = pendingDayOwnersRef.current;
-      setSelections((prev) => {
-        const next = { ...merged.selections };
-        for (const { day } of visitingDays) {
-          const pendingOwner = pending[day];
-          const localCount = prev[day]?.size ?? 0;
-          const serverCount = merged.selections[day]?.size ?? 0;
-          if (pendingOwner != null || localCount > serverCount) {
-            next[day] = prev[day] ?? merged.selections[day];
+      const prevWeek = seededContextKey.current?.split('|')[0] ?? null;
+      const sameWeek = prevWeek === planningContextKey;
+
+      if (!sameWeek) {
+        setSelections(merged.selections);
+        setMealSizes(merged.mealSizes);
+        setPendingDayOwners({});
+      } else {
+        const pending = pendingDayOwnersRef.current;
+        setSelections((prev) => {
+          const next = { ...merged.selections };
+          for (const { day } of visitingDays) {
+            const pendingOwner = pending[day];
+            const localCount = prev[day]?.size ?? 0;
+            const serverCount = merged.selections[day]?.size ?? 0;
+            if (pendingOwner != null || localCount > serverCount) {
+              next[day] = prev[day] ?? merged.selections[day];
+            }
           }
-        }
-        return next;
-      });
-      setMealSizes((prev) => {
-        const next = { ...merged.mealSizes };
-        for (const { day } of visitingDays) {
-          const pendingOwner = pending[day];
-          const localCount = prev[day] ? Object.keys(prev[day]).length : 0;
-          const serverCount = merged.mealSizes[day]
-            ? Object.keys(merged.mealSizes[day]).length
-            : 0;
-          if (pendingOwner != null || localCount > serverCount) {
-            next[day] = prev[day] ?? merged.mealSizes[day];
+          return next;
+        });
+        setMealSizes((prev) => {
+          const next = { ...merged.mealSizes };
+          for (const { day } of visitingDays) {
+            const pendingOwner = pending[day];
+            const localCount = prev[day] ? Object.keys(prev[day]).length : 0;
+            const serverCount = merged.mealSizes[day]
+              ? Object.keys(merged.mealSizes[day]).length
+              : 0;
+            if (pendingOwner != null || localCount > serverCount) {
+              next[day] = prev[day] ?? merged.mealSizes[day];
+            }
           }
-        }
-        return next;
-      });
-      setPendingDayOwners((prev) => {
-        let changed = false;
-        const next = { ...prev };
-        for (const { day } of visitingDays) {
-          const serverOwner = merged.dayOwners[day];
-          if (serverOwner != null && next[day] === serverOwner) {
-            delete next[day];
-            changed = true;
+          return next;
+        });
+        setPendingDayOwners((prev) => {
+          let changed = false;
+          const next = { ...prev };
+          for (const { day } of visitingDays) {
+            const serverOwner = merged.dayOwners[day];
+            if (serverOwner != null && next[day] === serverOwner) {
+              delete next[day];
+              changed = true;
+            }
           }
-        }
-        return changed ? next : prev;
-      });
+          return changed ? next : prev;
+        });
+      }
       seededContextKey.current = householdPlansSeedKey;
       setActiveDay((prev) => (prev && merged.selections[prev] ? prev : visitingDays[0].day));
       return;
@@ -695,7 +722,10 @@ export default function MealsScreen() {
         const bucket = daysByOwner.get(owner) ?? [];
         bucket.push(input);
         daysByOwner.set(owner, bucket);
-      } else if (serverOwner === owner) {
+      } else if (
+        serverOwner === owner &&
+        (householdDayAssignments[day]?.mealCount ?? 0) > 0
+      ) {
         const bucket = daysByOwner.get(owner) ?? [];
         bucket.push({ dayOfWeek: day, mealIds: [], mealNotes: [] });
         daysByOwner.set(owner, bucket);
