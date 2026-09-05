@@ -6,12 +6,19 @@ import {
   Text,
   View,
 } from 'react-native';
-import { Switch } from 'react-native-paper';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { Button, Switch } from 'react-native-paper';
 
 import useGetPreference from '../../hooks/useGetPreference';
 import useGetSubscription from '../../hooks/useGetSubscription';
+import useHouseholdEntitlement from '../../hooks/useHouseholdEntitlement';
+import useRenewSubscription from '../../hooks/useRenewSubscription';
 import useToggleAutoRenew from '../../hooks/useToggleAutoRenew';
-import { formatDate } from '../../utils/string.utils';
+import { formatDate, formatToMoney } from '../../utils/string.utils';
+import {
+  isSubscriptionExpired,
+  subscriptionNeedsRenew,
+} from '../../utils/subscription.utils';
 import { capitalizeString } from '../../utils/url.utils';
 import { CHEF_ORANGE } from '../../constants/theme';
 
@@ -19,12 +26,21 @@ import AutoRenewalModal from './components/AutoRenewalModal';
 import SubscriptionItem from './components/SubscriptionItem';
 
 export default function SubscriptionScreen() {
+  const navigation = useNavigation();
   const [autoRenew, setAutoRenew] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const { subscription, loading, error } = useGetSubscription();
+  const { subscription, setSubscription, loading, error, refetch } = useGetSubscription();
+  const { isActiveMember, isPayer, householdManagement, cachedPayerFirstName } =
+    useHouseholdEntitlement(subscription);
   const { preference, loading: loadingPreferences } = useGetPreference();
   const { toggleAutoRenewal, loading: toggling } = useToggleAutoRenew();
+  const { loading: renewLoading, renew } = useRenewSubscription(subscription, {
+    onRenewed: (updated) => {
+      setSubscription(updated);
+      setAutoRenew(updated.autoRenewal);
+    },
+  });
 
   useEffect(() => {
     if (subscription) setAutoRenew(subscription.autoRenewal);
@@ -44,6 +60,21 @@ export default function SubscriptionScreen() {
     });
   }, [autoRenew, toggleAutoRenewal]);
 
+  const goToBooking = useCallback(() => {
+    const parent = navigation.getParent();
+    if (parent) {
+      (parent as { navigate: (name: string) => void }).navigate('Booking');
+    } else {
+      (navigation as { navigate: (screen: string) => void }).navigate('Booking');
+    }
+  }, [navigation]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch]),
+  );
+
   if (loading || loadingPreferences) {
     return (
       <View style={styles.centered}>
@@ -62,6 +93,11 @@ export default function SubscriptionScreen() {
   }
 
   const plan = subscription.subscriptionPlan;
+  const showRenew = isPayer && subscriptionNeedsRenew(subscription);
+  const showMemberSoft = isActiveMember && subscriptionNeedsRenew(subscription);
+  const expired = isSubscriptionExpired(subscription);
+  const planName = capitalizeString(plan.name);
+  const formattedAmount = formatToMoney(plan.amount / 100);
   const visitDays = (() => {
     const vd = subscription.visitingDays;
     if (!vd) return '--';
@@ -114,7 +150,64 @@ export default function SubscriptionScreen() {
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
       >
-        <Text style={styles.title}>Subscription details</Text>
+        <Text style={styles.title}>
+          {isActiveMember ? 'Household plan' : 'Subscription details'}
+        </Text>
+        {isActiveMember ? (
+          <View style={styles.memberBannerCard}>
+            <Text style={styles.memberBannerTitle}>Household member</Text>
+            <Text style={styles.memberBanner}>
+              You're on {cachedPayerFirstName ?? 'your payer'}'s plan. You can't
+              change billing, auto-renew, or other subscription settings — only
+              your meals and visits.
+              {householdManagement === 'payer_assigns'
+                ? ' Your payer manages visit days for the household.'
+                : ''}
+            </Text>
+          </View>
+        ) : null}
+        {showRenew ? (
+          <View style={styles.renewBanner}>
+            <Text style={styles.renewTitle}>
+              {expired
+                ? 'Your subscription has expired'
+                : 'Your subscription ends soon'}
+            </Text>
+            <Text style={styles.renewBody}>
+              Renew to keep cook-in visits for your household. Same plan ·{' '}
+              {planName} · {formattedAmount}/month.
+            </Text>
+            <View style={styles.renewActions}>
+              <Button
+                mode="contained"
+                onPress={() => renew()}
+                loading={renewLoading}
+                disabled={renewLoading}
+                style={styles.renewPrimaryBtn}
+                buttonColor={CHEF_ORANGE}
+              >
+                Renew now
+              </Button>
+              <Button
+                mode="outlined"
+                onPress={goToBooking}
+                disabled={renewLoading}
+                style={styles.renewSecondaryBtn}
+                textColor={CHEF_ORANGE}
+              >
+                Change plan
+              </Button>
+            </View>
+          </View>
+        ) : null}
+        {showMemberSoft ? (
+          <View style={styles.renewBanner}>
+            <Text style={styles.renewTitle}>Ask your payer to renew</Text>
+            <Text style={styles.renewBody}>
+              Only the account that pays can renew this plan.
+            </Text>
+          </View>
+        ) : null}
         <View style={styles.card}>
           {items.map((item, index) => (
             <SubscriptionItem
@@ -126,6 +219,8 @@ export default function SubscriptionScreen() {
           ))}
         </View>
 
+        {isActiveMember ? null : (
+          <>
         <Text style={styles.sectionTitle}>Subscription settings</Text>
         <View style={styles.settingsCard}>
           <View style={styles.settingsText}>
@@ -133,7 +228,9 @@ export default function SubscriptionScreen() {
               Automatically renew subscription
             </Text>
             <Text style={styles.settingsHint}>
-              Your subscription will renew at the end of the billing period.
+              {showRenew
+                ? 'Turning this on does not charge you now — use Renew to pay for another month.'
+                : 'Your subscription will renew at the end of the billing period.'}
             </Text>
           </View>
           <Switch
@@ -143,10 +240,12 @@ export default function SubscriptionScreen() {
             color={CHEF_ORANGE}
           />
         </View>
+          </>
+        )}
       </ScrollView>
 
       <AutoRenewalModal
-        visible={modalVisible}
+        visible={modalVisible && !isActiveMember}
         onClose={() => setModalVisible(false)}
         onConfirm={handleModalConfirm}
         loading={toggling}
@@ -174,6 +273,59 @@ const styles = StyleSheet.create({
   },
   errorSub: { fontSize: 14, color: '#6b7280', textAlign: 'center' },
   title: { fontSize: 22, fontWeight: '700', marginBottom: 24 },
+  memberBannerCard: {
+    backgroundColor: '#f0f9ff',
+    borderWidth: 1,
+    borderColor: '#bae6fd',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  memberBannerTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0c4a6e',
+    marginBottom: 6,
+  },
+  memberBanner: {
+    fontSize: 14,
+    color: '#0369a1',
+    lineHeight: 20,
+  },
+  renewBanner: {
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 24,
+  },
+  renewTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#78350f',
+    marginBottom: 8,
+  },
+  renewBody: {
+    fontSize: 14,
+    color: '#92400e',
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  renewActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+    alignItems: 'center',
+  },
+  renewPrimaryBtn: {
+    backgroundColor: CHEF_ORANGE,
+    borderRadius: 12,
+  },
+  renewSecondaryBtn: {
+    borderRadius: 12,
+    borderColor: CHEF_ORANGE,
+  },
   card: {
     backgroundColor: '#fff',
     borderRadius: 12,

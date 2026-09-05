@@ -1,4 +1,5 @@
 import type {
+  Invoice,
   SubscriptionCreationRequest,
   SubscriptionResponse,
 } from '../types';
@@ -14,6 +15,17 @@ export const fetchCurrentUserSubscription = async () => {
   );
   return {
     subscription: data?.subscription,
+    error,
+  };
+};
+
+/** Payer-only: create or reuse pending subscription-kind invoice for renew. */
+export const renewSubscription = async () => {
+  const { error, data } = await tryCatch<Invoice>(
+    clientApi.post(`${BASE_PATH}renew`),
+  );
+  return {
+    invoice: data,
     error,
   };
 };

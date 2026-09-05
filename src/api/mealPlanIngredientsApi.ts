@@ -20,10 +20,12 @@ export const fetchMealPlanIngredients = async (planId: number) => {
 export const updateIngredientExclusions = async (
   planId: number,
   exclusions: IngredientExclusionInput[],
+  shoppingNotes?: string | null,
 ) => {
   const { data, error } = await tryCatch<MealPlanIngredientBreakdown>(
     clientApi.put(`${BASE_PATH}/${planId}/ingredient-exclusions`, {
       exclusions,
+      shoppingNotes: shoppingNotes ?? null,
     }),
   );
   return { breakdown: data ?? null, error };

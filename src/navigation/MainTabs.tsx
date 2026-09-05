@@ -4,8 +4,10 @@ import { useNavigation } from '@react-navigation/native';
 import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
+import useHouseholdEntitlement from '../hooks/useHouseholdEntitlement';
 import useRegisterPushOnLogin from '../notifications/useRegisterPushOnLogin';
 import HomeScreen from '../screens/HomeScreen';
+import HouseholdScreen from '../screens/Household';
 import MealsScreen from '../screens/MealsScreen';
 import SettingsScreen from '../screens/Settings';
 import SubscriptionScreen from '../screens/Subscription';
@@ -24,6 +26,8 @@ function tabIconName(routeName: string, focused: boolean): MciName {
       return focused ? 'home' : 'home-outline';
     case 'Meals':
       return focused ? 'silverware-fork-knife' : 'silverware';
+    case 'Household':
+      return focused ? 'account-group' : 'account-group-outline';
     case 'Subscription':
       return focused ? 'card-account-details' : 'card-account-details-outline';
     case 'Settings':
@@ -35,21 +39,40 @@ function tabIconName(routeName: string, focused: boolean): MciName {
 
 export default function MainTabs() {
   const tab = useSelector((state: RootState) => state.auth.postLoginTab);
+  const pendingInviteToken = useSelector(
+    (state: RootState) => state.auth.pendingInviteToken,
+  );
+  const { role, isPayer } = useHouseholdEntitlement();
   const navigation = useNavigation();
   const dispatch = useDispatch();
 
   useRegisterPushOnLogin();
 
   useEffect(() => {
-    if (tab !== 'Booking') return;
     const parent = navigation.getParent();
-    if (parent) {
-      parent.navigate('Booking');
-    } else {
-      (navigation as { navigate: (name: string) => void }).navigate('Booking');
+    const navigateRoot = (name: string, params?: object) => {
+      if (parent) {
+        (parent as { navigate: (n: string, p?: object) => void }).navigate(name, params);
+      } else {
+        (navigation as { navigate: (n: string, p?: object) => void }).navigate(name, params);
+      }
+    };
+
+    if (tab === 'Booking') {
+      navigateRoot('Booking');
+      dispatch(setPostLoginTab(null));
+      return;
     }
-    dispatch(setPostLoginTab(null));
-  }, [tab, navigation, dispatch]);
+
+    if (tab === 'AcceptInvite' || role === 'invited' || pendingInviteToken) {
+      navigateRoot('AcceptInvite', {
+        token: pendingInviteToken ?? undefined,
+      });
+      if (tab === 'AcceptInvite') {
+        dispatch(setPostLoginTab(null));
+      }
+    }
+  }, [tab, navigation, dispatch, pendingInviteToken, role]);
 
   return (
     <Tab.Navigator
@@ -68,6 +91,13 @@ export default function MainTabs() {
     >
       <Tab.Screen name="Home" component={HomeScreen} options={{ title: 'Home' }} />
       <Tab.Screen name="Meals" component={MealsScreen} options={{ title: 'Meals' }} />
+      {isPayer ? (
+        <Tab.Screen
+          name="Household"
+          component={HouseholdScreen}
+          options={{ title: 'Household' }}
+        />
+      ) : null}
       <Tab.Screen
         name="Subscription"
         component={SubscriptionScreen}

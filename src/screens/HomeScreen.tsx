@@ -1,25 +1,30 @@
-import { useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Button, Card, Icon } from 'react-native-paper';
 import { useDispatch, useSelector } from 'react-redux';
-import dayjs from 'dayjs';
 
 import useGetCurrentUserDetails from '../hooks/useGetCurrentUserDetails';
 import useGetInvoiceHistory from '../hooks/useGetInvoiceHistory';
+import useGetMealPlanForWeek from '../hooks/useGetMealPlanForWeek';
 import useGetSubscription from '../hooks/useGetSubscription';
+import useGetSupportTicketsUnread from '../hooks/useGetSupportTicketsUnread';
+import useHouseholdEntitlement from '../hooks/useHouseholdEntitlement';
+import useRenewSubscription from '../hooks/useRenewSubscription';
 import { currentUser, setUser } from '../store/authSlice';
 import {
   CHEF_GREEN,
+  CHEF_GREY,
   CHEF_ORANGE,
   ERROR_RED,
   GRAY_100,
@@ -33,7 +38,22 @@ import {
   formatToMoney,
   getInitials,
 } from '../utils/string.utils';
+import { mealPlanHasSelections } from '../utils/mealPlan.utils';
+import {
+  endingSoonLabel,
+  isSubscriptionEntitled,
+  isSubscriptionExpired,
+  subscriptionMsLeft,
+  subscriptionNeedsRenew,
+} from '../utils/subscription.utils';
+import {
+  currentWeekStart,
+  firstPlanWeekForSubscription,
+  weekRangeLabel,
+} from '../utils/week';
 
+import usePendingInvite from '../hooks/usePendingInvite';
+import PendingInviteHomeCard from '../components/PendingInviteHomeCard';
 import PaymentHistory from './booking/components/PaymentHistory';
 
 export default function HomeScreen() {
@@ -41,15 +61,92 @@ export default function HomeScreen() {
   const dispatch = useDispatch();
   const current = useSelector(currentUser);
 
-  const { subscription, error: subscriptionError, loading: subscriptionLoading } =
-    useGetSubscription();
-  const { user, error: userError, loading: userLoading } =
+  const {
+    isActiveMember,
+    isPayer,
+    shouldShowSubscribeCTA,
+    cachedPayerFirstName,
+  } = useHouseholdEntitlement();
+
+  const {
+    subscription,
+    setSubscription,
+    error: subscriptionError,
+    loading: subscriptionLoading,
+    refetch: refetchSubscription,
+  } = useGetSubscription();
+  const { user, error: userError, loading: userLoading, refetch: refetchUser } =
     useGetCurrentUserDetails();
   const {
     invoices,
     loading: invoicesLoading,
     error: invoicesError,
+    refetch: refetchInvoices,
   } = useGetInvoiceHistory();
+
+  const currentWeek = currentWeekStart();
+  const subscriptionEntitled = isSubscriptionEntitled(subscription);
+  const planWeek =
+    subscriptionEntitled && subscription
+      ? firstPlanWeekForSubscription(
+          subscription.lastPaid,
+          subscription.expiresAt,
+          subscription.visitingDays,
+        ) ?? currentWeek
+      : null;
+  const {
+    mealPlan: currentWeekMealPlan,
+    loading: mealPlanLoading,
+    refetch: refetchMealPlan,
+  } = useGetMealPlanForWeek(planWeek);
+
+  const { loading: renewLoading, renew } = useRenewSubscription(subscription, {
+    onRenewed: setSubscription,
+  });
+
+  const showRenew =
+    isPayer && subscription != null && subscriptionNeedsRenew(subscription);
+  const showMemberRenewNotice =
+    isActiveMember && subscription != null && subscriptionNeedsRenew(subscription);
+
+  const {
+    hasUnread: hasSupportUnread,
+    unreadCount: supportUnreadCount,
+    refetch: refetchSupportUnread,
+  } = useGetSupportTicketsUnread();
+
+  const [refreshing, setRefreshing] = useState(false);
+
+  const {
+    invite: pendingInvite,
+    loading: pendingInviteLoading,
+    refetch: refetchPendingInvite,
+  } = usePendingInvite(!subscriptionEntitled);
+
+  useFocusEffect(
+    useCallback(() => {
+      refetchSupportUnread();
+      if (!subscriptionEntitled) {
+        void refetchPendingInvite();
+      }
+    }, [refetchPendingInvite, refetchSupportUnread, subscriptionEntitled]),
+  );
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([
+        refetchSubscription(),
+        refetchUser(),
+        refetchInvoices(),
+        refetchMealPlan(),
+        refetchSupportUnread(),
+        refetchPendingInvite(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [refetchInvoices, refetchMealPlan, refetchPendingInvite, refetchSubscription, refetchSupportUnread, refetchUser]);
 
   useEffect(() => {
     if (user) dispatch(setUser(user));
@@ -74,13 +171,52 @@ export default function HomeScreen() {
   const goToSettings = () => {
     (navigation as { navigate: (screen: string) => void }).navigate('Settings');
   };
+  const goToMeals = () => {
+    (navigation as { navigate: (screen: string) => void }).navigate('Meals');
+  };
+  const goToHousehold = () => {
+    (navigation as { navigate: (screen: string) => void }).navigate('Household');
+  };
+  const goToAcceptInvite = () => {
+    const parent = navigation.getParent();
+    if (parent) {
+      (parent as { navigate: (name: string) => void }).navigate('AcceptInvite');
+    } else {
+      (navigation as { navigate: (screen: string) => void }).navigate('AcceptInvite');
+    }
+  };
+  const goToSupport = () => {
+    const parent = navigation.getParent();
+    if (parent) {
+      (parent as { navigate: (name: string) => void }).navigate('SupportTickets');
+    }
+  };
+
+  const hasWeeklyMealSelections = mealPlanHasSelections(currentWeekMealPlan);
 
   return (
+    <View style={styles.screen}>
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={CHEF_ORANGE}
+          colors={[CHEF_ORANGE]}
+          progressBackgroundColor="#fff"
+        />
+      }
     >
+      {refreshing ? (
+        <View style={styles.refreshBanner}>
+          <ActivityIndicator size="small" color={CHEF_ORANGE} />
+          <Text style={styles.refreshBannerText}>Refreshing your data…</Text>
+        </View>
+      ) : null}
+
       <Text style={styles.welcome}>
         {current?.firstName
           ? `Welcome back, ${current.firstName}`
@@ -105,10 +241,10 @@ export default function HomeScreen() {
             </Card.Content>
           </Card>
         ) : !subscription ? (
+          shouldShowSubscribeCTA ? (
           <Card style={styles.card}>
             <Card.Content style={styles.emptyBlock}>
               <View style={styles.emptyIconWrap}>
-                {/* <Icon source="silverware-fork-knife" size={48} color={CHEF_ORANGE} /> */}
                 <Image
                   source={require('../../assets/images/utensils.png')}
                   style={{ height: 100 }}
@@ -125,13 +261,61 @@ export default function HomeScreen() {
               </Button>
             </Card.Content>
           </Card>
+          ) : null
+        ) : isActiveMember ? (
+          <HouseholdPlanCard
+            subscription={subscription}
+            payerFirstName={cachedPayerFirstName ?? 'your payer'}
+            entitled={subscriptionEntitled}
+            showMemberRenewNotice={showMemberRenewNotice}
+            onPlanMeals={goToMeals}
+            onViewPlan={goToSubscription}
+          />
         ) : (
-          <SubscriptionCard subscription={subscription} onManage={goToSubscription} />
+          <SubscriptionCard
+            subscription={subscription}
+            showRenew={showRenew}
+            renewLoading={renewLoading}
+            onRenew={renew}
+            onManage={goToSubscription}
+          />
         )}
       </View>
 
+      {pendingInvite && !subscriptionEntitled ? (
+        <View style={styles.cardRow}>
+          <PendingInviteHomeCard
+            invite={pendingInvite}
+            loading={pendingInviteLoading}
+            onPress={goToAcceptInvite}
+          />
+        </View>
+      ) : null}
+
+      {subscriptionEntitled ? (
+        <View style={styles.cardRow}>
+          <MealPlanPromptCard
+            hasSelections={hasWeeklyMealSelections}
+            loading={mealPlanLoading}
+            weekLabel={weekRangeLabel(planWeek ?? currentWeek)}
+            onPress={goToMeals}
+          />
+        </View>
+      ) : null}
+
+      {subscriptionEntitled && isPayer ? (
+        <View style={styles.cardRow}>
+          <HouseholdPromptCard onPress={goToHousehold} />
+        </View>
+      ) : null}
+
       <View style={styles.cardRow}>
-        <PaymentHistory invoices={invoices} loading={invoicesLoading} />
+        <PaymentHistory
+          invoices={invoices}
+          loading={invoicesLoading}
+          limit={3}
+          showViewAll
+        />
       </View>
 
       {/* User info — 1 column */}
@@ -157,18 +341,192 @@ export default function HomeScreen() {
         ) : null}
       </View>
     </ScrollView>
+
+      <TouchableOpacity
+        style={styles.helpFab}
+        onPress={goToSupport}
+        activeOpacity={0.85}
+        accessibilityLabel={
+          hasSupportUnread
+            ? 'Get help, you have support ticket updates'
+            : 'Get help'
+        }
+        accessibilityRole="button"
+      >
+        <Icon source="help-circle" size={26} color="#fff" />
+        {hasSupportUnread ? (
+          <View style={styles.helpFabBadge}>
+            {supportUnreadCount > 1 ? (
+              <Text style={styles.helpFabBadgeText}>
+                {supportUnreadCount > 9 ? '9+' : supportUnreadCount}
+              </Text>
+            ) : null}
+          </View>
+        ) : null}
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function HouseholdPromptCard({ onPress }: { onPress: () => void }) {
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+      <Card style={[styles.card, styles.mealPromptCard]}>
+        <Card.Content style={styles.mealPromptContent}>
+          <View style={styles.mealPromptIconWrap}>
+            <Icon source="account-group" size={22} color={CHEF_ORANGE} />
+          </View>
+          <View style={styles.mealPromptTextWrap}>
+            <Text style={styles.mealPromptTitle}>Add or Manage Household</Text>
+            <Text style={styles.mealPromptSub}>
+              Invite family members to share your subscription and meal plan
+            </Text>
+          </View>
+          <Icon source="chevron-right" size={24} color={GRAY_600} />
+        </Card.Content>
+      </Card>
+    </TouchableOpacity>
+  );
+}
+
+function MealPlanPromptCard({
+  hasSelections,
+  loading,
+  weekLabel,
+  onPress,
+}: {
+  hasSelections: boolean;
+  loading: boolean;
+  weekLabel: string;
+  onPress: () => void;
+}) {
+  if (loading) {
+    return (
+      <Card style={styles.card}>
+        <Card.Content style={styles.mealPromptLoading}>
+          <ActivityIndicator size="small" color={CHEF_ORANGE} />
+        </Card.Content>
+      </Card>
+    );
+  }
+
+  return (
+    <TouchableOpacity onPress={onPress} activeOpacity={0.85}>
+      <Card
+        style={[
+          styles.card,
+          styles.mealPromptCard,
+          !hasSelections && styles.mealPromptCardAccent,
+        ]}
+      >
+        <Card.Content style={styles.mealPromptContent}>
+          <View style={styles.mealPromptIconWrap}>
+            <Icon
+              source="silverware-fork-knife"
+              size={22}
+              color={hasSelections ? CHEF_GREEN : CHEF_ORANGE}
+            />
+          </View>
+          <View style={styles.mealPromptTextWrap}>
+            <Text style={styles.mealPromptTitle}>
+              {hasSelections
+                ? 'View / select meals'
+                : 'Select your meals for this week'}
+            </Text>
+            <Text style={styles.mealPromptSub}>
+              {hasSelections
+                ? `Week of ${weekLabel} — tap to update your plan`
+                : `Week of ${weekLabel} — choose what your chef will prepare`}
+            </Text>
+          </View>
+          <Icon source="chevron-right" size={24} color={GRAY_600} />
+        </Card.Content>
+      </Card>
+    </TouchableOpacity>
+  );
+}
+
+function HouseholdPlanCard({
+  subscription,
+  payerFirstName,
+  entitled,
+  showMemberRenewNotice,
+  onPlanMeals,
+  onViewPlan,
+}: {
+  subscription: Subscription;
+  payerFirstName: string;
+  entitled: boolean;
+  showMemberRenewNotice: boolean;
+  onPlanMeals: () => void;
+  onViewPlan: () => void;
+}) {
+  const plan = subscription.subscriptionPlan;
+
+  return (
+    <Card style={[styles.card, styles.subscriptionCard]}>
+      <Card.Content style={styles.subscriptionInner}>
+        <Text style={styles.planLabel}>Household plan</Text>
+        <Text style={styles.planName}>{plan.name ?? '--'}</Text>
+        <Text style={styles.emptySub}>
+          You're on {payerFirstName}'s household plan.
+        </Text>
+        <Text style={[styles.emptySub, { marginTop: 8 }]}>
+          No charge for you — {payerFirstName} stays the billing account.
+        </Text>
+        {showMemberRenewNotice ? (
+          <Text style={[styles.autoRenewExpired, { marginTop: 12 }]}>
+            Ask {payerFirstName} to renew — this plan has expired or ends soon.
+          </Text>
+        ) : null}
+      </Card.Content>
+      <View style={styles.subscriptionActions}>
+        {entitled ? (
+          <Button
+            mode="contained"
+            onPress={onPlanMeals}
+            buttonColor={CHEF_ORANGE}
+            textColor="#fff"
+            style={styles.subscriptionPrimaryBtn}
+            contentStyle={styles.subscriptionBtnContent}
+            labelStyle={styles.subscriptionBtnLabel}
+          >
+            Plan your meals
+          </Button>
+        ) : null}
+        <Button
+          mode={entitled ? 'text' : 'contained'}
+          onPress={onViewPlan}
+          buttonColor={entitled ? undefined : CHEF_ORANGE}
+          textColor={entitled ? CHEF_ORANGE : '#fff'}
+          style={entitled ? styles.subscriptionSecondaryBtn : styles.subscriptionPrimaryBtn}
+          contentStyle={styles.subscriptionBtnContent}
+          labelStyle={styles.subscriptionBtnLabel}
+        >
+          View plan
+        </Button>
+      </View>
+    </Card>
   );
 }
 
 function SubscriptionCard({
   subscription,
+  showRenew,
+  renewLoading,
+  onRenew,
   onManage,
 }: {
   subscription: Subscription;
+  showRenew: boolean;
+  renewLoading: boolean;
+  onRenew: () => void;
   onManage: () => void;
 }) {
   const plan = subscription.subscriptionPlan;
-  const subscriptionExpired = dayjs().isAfter(dayjs(subscription.expiresAt));
+  const subscriptionExpired = isSubscriptionExpired(subscription);
+  const msLeft = subscriptionMsLeft(subscription);
+  const endingSoon = !subscriptionExpired && msLeft <= 3 * 24 * 60 * 60 * 1000;
 
   return (
     <Card style={[styles.card, styles.subscriptionCard]}>
@@ -196,18 +554,38 @@ function SubscriptionCard({
         >
           {subscriptionExpired
             ? 'Subscription expired'
-            : subscription.autoRenewal
-              ? 'Renews automatically'
-              : "Doesn't renew automatically"}
+            : endingSoon
+              ? endingSoonLabel(msLeft)
+              : subscription.autoRenewal
+                ? 'Renews automatically'
+                : "Doesn't renew automatically"}
         </Text>
       </Card.Content>
       <View style={styles.subscriptionActions}>
+        {showRenew ? (
+          <Button
+            mode="contained"
+            onPress={onRenew}
+            loading={renewLoading}
+            disabled={renewLoading}
+            buttonColor={CHEF_ORANGE}
+            textColor="#fff"
+            style={styles.subscriptionPrimaryBtn}
+            contentStyle={styles.subscriptionBtnContent}
+            labelStyle={styles.subscriptionBtnLabel}
+          >
+            Renew
+          </Button>
+        ) : null}
         <Button
-          mode="contained"
+          mode={showRenew ? 'text' : 'contained'}
           compact={false}
           onPress={onManage}
-          style={[styles.btn, styles.subscriptionManageBtn]}
-          contentStyle={styles.subscriptionManageBtnContent}
+          buttonColor={showRenew ? undefined : CHEF_ORANGE}
+          textColor={showRenew ? CHEF_ORANGE : '#fff'}
+          style={showRenew ? styles.subscriptionSecondaryBtn : styles.subscriptionPrimaryBtn}
+          contentStyle={styles.subscriptionBtnContent}
+          labelStyle={styles.subscriptionBtnLabel}
         >
           Manage subscription
         </Button>
@@ -287,7 +665,22 @@ function UserInfoCard({
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { padding: 24, paddingBottom: 48 },
+  screen: { flex: 1 },
+  content: { padding: 24, paddingBottom: 96 },
+  refreshBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginBottom: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1,
+    borderColor: '#fed7aa',
+  },
+  refreshBannerText: { fontSize: 14, fontWeight: '600', color: CHEF_ORANGE },
   welcome: {
     fontSize: 22,
     fontWeight: '700',
@@ -298,6 +691,41 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 24,
     overflow: 'hidden',
+  },
+  mealPromptCard: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  mealPromptCardAccent: {
+    borderColor: CHEF_ORANGE,
+    backgroundColor: '#fff8f0',
+  },
+  mealPromptContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 4,
+  },
+  mealPromptIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mealPromptTextWrap: { flex: 1, minWidth: 0 },
+  mealPromptTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: CHEF_GREY,
+    marginBottom: 4,
+  },
+  mealPromptSub: { fontSize: 13, color: GRAY_600, lineHeight: 18 },
+  mealPromptLoading: {
+    minHeight: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   loadingBlock: {
     minHeight: 160,
@@ -337,18 +765,37 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'stretch',
     alignSelf: 'stretch',
+    overflow: 'hidden',
+    borderBottomLeftRadius: 22,
+    borderBottomRightRadius: 22,
   },
-  subscriptionManageBtn: {
+  subscriptionPrimaryBtn: {
     width: '100%',
     alignSelf: 'stretch',
     margin: 0,
     borderRadius: 0,
   },
-  subscriptionManageBtnContent: {
+  subscriptionSecondaryBtn: {
+    width: '100%',
+    alignSelf: 'stretch',
+    margin: 0,
+    borderRadius: 0,
+    backgroundColor: '#fff8f0',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#fed7aa',
+  },
+  subscriptionBtnContent: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     width: '100%',
+    minHeight: 48,
+    paddingVertical: 8,
+  },
+  subscriptionBtnLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    letterSpacing: 0,
   },
   overlay: {
     ...StyleSheet.absoluteFillObject,
@@ -401,4 +848,40 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   detailValue: { fontSize: 14, color: GRAY_600, flex: 1 },
+  helpFab: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: CHEF_ORANGE,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+  },
+  helpFabBadge: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    minWidth: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: ERROR_RED,
+    borderWidth: 2,
+    borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+  },
+  helpFabBadgeText: {
+    color: '#fff',
+    fontSize: 9,
+    fontWeight: '700',
+    lineHeight: 10,
+  },
 });

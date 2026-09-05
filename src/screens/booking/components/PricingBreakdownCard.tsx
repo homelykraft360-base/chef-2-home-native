@@ -42,11 +42,13 @@ export default function PricingBreakdownCard({ plan, logistics }: Props) {
   const weeklyVisits = logistics.weeklySessionsCount;
   const visitFeesNaira = computeVisitFeesNaira(logistics);
   const visitFeesLabel =
-    logistics.location === 'lagos-island'
-      ? 'Weekly visits (Lagos Island)'
-      : logistics.location === 'lagos-mainland'
-        ? 'Weekly visits (Lagos Mainland)'
-        : 'Weekly visits';
+    logistics.location === 'lagos-all'
+      ? 'Weekly visits (All Lagos)'
+      : logistics.location === 'lagos-island'
+        ? 'Weekly visits (Lagos Island)'
+        : logistics.location === 'lagos-mainland'
+          ? 'Weekly visits (Lagos Mainland)'
+          : 'Weekly visits';
 
   const totalNaira = computeBookingMonthlyTotalNaira(plan, logistics);
 

@@ -14,7 +14,7 @@ import { getPlanWeeklyVisitCap } from './subscriptionPlan.utils';
 
 export function computeVisitFeesNaira(logistics: LogisticsProps): number {
   const perVisitNaira =
-    logistics.location === 'lagos-island'
+    logistics.location === 'lagos-island' || logistics.location === 'lagos-all'
       ? LAGOS_ISLAND_PER_VISIT_NAIRA
       : logistics.location === 'lagos-mainland'
         ? LAGOS_MAINLAND_PER_VISIT_NAIRA

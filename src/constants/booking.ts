@@ -13,10 +13,26 @@ export const dayOptions = [
   'sunday',
 ] as const;
 
+export const VISIT_TIME_MORNING_RANGE = '8am - 12 Noon';
+export const VISIT_TIME_AFTERNOON_RANGE = '1pm - 6pm';
+
+export function visitTimeSlotRange(value: string): string {
+  if (value === 'morning') return VISIT_TIME_MORNING_RANGE;
+  if (value === 'afternoon') return VISIT_TIME_AFTERNOON_RANGE;
+  return '--';
+}
+
+export function visitTimeSlotLabel(value: string): string {
+  const range = visitTimeSlotRange(value);
+  if (range === '--') return range;
+  const name = value === 'morning' ? 'Morning' : 'Afternoon';
+  return `${name} (${range})`;
+}
+
 export const timeOptionsWithLabels: { label: string; value: string }[] = [
   { label: 'Select time', value: '' },
-  { label: 'Morning (8am - 9am)', value: 'morning' },
-  { label: 'Afternoon (2pm - 3pm)', value: 'afternoon' },
+  { label: visitTimeSlotLabel('morning'), value: 'morning' },
+  { label: visitTimeSlotLabel('afternoon'), value: 'afternoon' },
 ];
 
 export const planColorScheme = ['#6aa301', '#D97602', '#7c3aed'] as const;

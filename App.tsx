@@ -9,6 +9,7 @@ import Constants from 'expo-constants';
 
 import { PAYSTACK_NGN_CHANNELS } from './src/constants/paystack';
 import RootNavigator from './src/navigation/RootNavigator';
+import { linkingConfig } from './src/navigation/linking';
 import { persistor, store } from './src/store';
 
 // Load API client so it subscribes to store and syncs token to request headers
@@ -51,7 +52,7 @@ export default function App() {
           defaultChannels={[...PAYSTACK_NGN_CHANNELS]}
         >
           <PaperProvider theme={paperTheme}>
-            <NavigationContainer>
+            <NavigationContainer linking={linkingConfig}>
               <RootNavigator />
               <StatusBar style="auto" />
             </NavigationContainer>

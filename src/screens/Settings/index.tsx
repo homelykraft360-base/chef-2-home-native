@@ -155,7 +155,7 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: '#101928',
-    fontWeight: '600',
+    fontWeight: '700',
   },
   tabIndicator: {
     position: 'absolute',

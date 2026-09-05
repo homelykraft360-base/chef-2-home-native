@@ -33,7 +33,10 @@ function exclusionsFromBreakdown(
 }
 
 /** Per-meal toggle state. Exclusions sync to backend once at checkout. */
-export default function useMealPlanIngredients(planId: number | null) {
+export default function useMealPlanIngredients(
+  planId: number | null,
+  refreshKey?: number,
+) {
   const [breakdown, setBreakdown] =
     useState<MealPlanIngredientBreakdown | null>(null);
   const [loading, setLoading] = useState(false);
@@ -57,7 +60,7 @@ export default function useMealPlanIngredients(planId: number | null) {
 
   useEffect(() => {
     load();
-  }, [load]);
+  }, [load, refreshKey]);
 
   const toggleIngredient = useCallback(
     (
@@ -106,7 +109,8 @@ export default function useMealPlanIngredients(planId: number | null) {
           meals,
           grossTotalKobo,
           excludedTotalKobo,
-          payableTotalKobo: grossTotalKobo - excludedTotalKobo,
+          payableTotalKobo:
+            grossTotalKobo - excludedTotalKobo + (prev.serviceChargeKobo ?? 0),
         };
       });
     },
@@ -114,7 +118,9 @@ export default function useMealPlanIngredients(planId: number | null) {
   );
 
   const checkout = useCallback(
-    async (): Promise<IngredientCheckoutResponse | null> => {
+    async (
+      shoppingNotes?: string | null,
+    ): Promise<IngredientCheckoutResponse | null> => {
       if (!planId || !breakdown) return null;
       setPaying(true);
       setError(null);
@@ -124,6 +130,7 @@ export default function useMealPlanIngredients(planId: number | null) {
       const { error: syncErr } = await updateIngredientExclusions(
         planId,
         exclusions,
+        shoppingNotes,
       );
       if (syncErr) {
         // 409 here usually means a paid/pending invoice already exists for

@@ -29,6 +29,7 @@ export default ({ config }) => {
       },
       googleServicesFile:
         process.env.GOOGLE_SERVICE_INFO_PLIST ?? './GoogleService-Info.plist',
+      associatedDomains: ['applinks:chef2home.ng'],
       infoPlist: {
         ...(config.ios?.infoPlist ?? {}),
         // Keep URL scheme explicitly in Info.plist; plugin should add this too.
@@ -46,6 +47,20 @@ export default ({ config }) => {
       package: 'com.homelykraft.chef2home',
       googleServicesFile:
         process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
+      intentFilters: [
+        {
+          action: 'VIEW',
+          autoVerify: true,
+          data: [
+            {
+              scheme: 'https',
+              host: 'chef2home.ng',
+              pathPrefix: '/invite',
+            },
+          ],
+          category: ['BROWSABLE', 'DEFAULT'],
+        },
+      ],
     },
     plugins: [
       [

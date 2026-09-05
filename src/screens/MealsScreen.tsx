@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -8,19 +8,20 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { Button } from 'react-native-paper';
+import { Button, Snackbar } from 'react-native-paper';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
+import { useSelector } from 'react-redux';
 
 import {
   createMealPlan,
   fetchMealPlansInRange,
   updateMealPlan,
 } from '../api/mealPlanApi';
+import ShoppingNotesSheet from '../components/ShoppingNotesSheet';
 import { fetchMeals } from '../api/mealsApi';
 import {
   CHEF_GREEN,
@@ -32,16 +33,25 @@ import {
   GRAY_600,
 } from '../constants/theme';
 import useGetMealPlanForWeek from '../hooks/useGetMealPlanForWeek';
+import useHouseholdWeekAssignments from '../hooks/useHouseholdWeekAssignments';
+import useHouseholdWeekPlans from '../hooks/useHouseholdWeekPlans';
 import useGetSubscription from '../hooks/useGetSubscription';
+import useHouseholdEntitlement from '../hooks/useHouseholdEntitlement';
+import useHouseholdMembers from '../hooks/useHouseholdMembers';
+import useRenewSubscription from '../hooks/useRenewSubscription';
 import useSaveMealPlan from '../hooks/useSaveMealPlan';
+import { currentUser } from '../store/authSlice';
 import type {
   DayOfWeek,
   Meal,
+  MealPlan,
   MealPlanDay,
   MealPlanDayInput,
   MealSelectionSource,
+  MealSize,
   Subscription,
 } from '../types';
+import { DEFAULT_MEAL_SIZE, MEAL_SIZE_OPTIONS } from '../types';
 import {
   addWeeks,
   currentWeekStart,
@@ -49,6 +59,8 @@ import {
   weekOptionsForSubscription,
   weekRangeLabel,
 } from '../utils/week';
+import { isSubscriptionEntitled, subscriptionNeedsRenew } from '../utils/subscription.utils';
+import { mealPlanMatchesContext, mergeHouseholdWeekPlans } from '../utils/mealPlan.utils';
 import { capitalizeString } from '../utils/url.utils';
 
 const MAX_PER_DAY = 5;
@@ -59,6 +71,8 @@ const UNCATEGORIZED = 'other';
 type VisitingDayEntry = { day: DayOfWeek; timeOfDay: string };
 
 type DaySelections = Record<DayOfWeek, Set<number>>;
+
+type DayMealSizes = Record<DayOfWeek, Record<number, MealSize>>;
 
 const SOURCE_LABEL: Record<MealSelectionSource, string | null> = {
   user: null,
@@ -95,6 +109,28 @@ function emptySelections(visitingDays: VisitingDayEntry[]): DaySelections {
   }, {} as DaySelections);
 }
 
+function emptyMealSizes(visitingDays: VisitingDayEntry[]): DayMealSizes {
+  return visitingDays.reduce((acc, { day }) => {
+    acc[day] = {};
+    return acc;
+  }, {} as DayMealSizes);
+}
+
+function seedMealSizesFromPlan(
+  visitingDays: VisitingDayEntry[],
+  planDays: MealPlanDay[],
+): DayMealSizes {
+  const next = emptyMealSizes(visitingDays);
+  for (const pd of planDays) {
+    for (const meal of pd.meals) {
+      if (next[pd.dayOfWeek]) {
+        next[pd.dayOfWeek][meal.id] = meal.mealSize ?? DEFAULT_MEAL_SIZE;
+      }
+    }
+  }
+  return next;
+}
+
 function seedSelectionsFromPlan(
   visitingDays: VisitingDayEntry[],
   planDays: MealPlanDay[],
@@ -108,17 +144,77 @@ function seedSelectionsFromPlan(
   return next;
 }
 
+/** Keeps payer "planning for" choice while switching weeks/days on Meals tab. */
+let persistedPlanningMemberUserId: number | null = null;
+
 export default function MealsScreen() {
   const navigation = useNavigation();
-  const { subscription, loading: subscriptionLoading } = useGetSubscription();
+  const user = useSelector(currentUser);
+  const { subscription, setSubscription, loading: subscriptionLoading } = useGetSubscription();
+  const {
+    isPayer,
+    isActiveMember,
+    shouldShowSubscribeCTA,
+    householdManagement,
+  } = useHouseholdEntitlement();
+  const { members } = useHouseholdMembers(isPayer);
+  const [selectedMemberUserId, setSelectedMemberUserIdState] = useState<number | null>(
+    () => persistedPlanningMemberUserId,
+  );
+  const setSelectedMemberUserId = useCallback((userId: number | null) => {
+    persistedPlanningMemberUserId = userId;
+    setSelectedMemberUserIdState(userId);
+  }, []);
+  const [quotaSnackbar, setQuotaSnackbar] = useState(false);
+
+  const { loading: renewLoading, renew } = useRenewSubscription(subscription, {
+    onRenewed: setSubscription,
+  });
+
+  const targetUserId =
+    selectedMemberUserId != null ? selectedMemberUserId : undefined;
+
+  const ownerUserId =
+    targetUserId ?? user?.id ?? subscription?.userId ?? undefined;
+
+  const memberOptions = useMemo(
+    () =>
+      members.filter(
+        (m) => m.role === 'member' && m.status === 'active' && m.userId != null,
+      ),
+    [members],
+  );
+
+  const showMemberPicker =
+    isPayer && householdManagement === 'payer_assigns' && memberOptions.length > 0;
+
+  const mealsReadOnly =
+    householdManagement === 'payer_assigns' && isActiveMember;
+
+  const planningForOther =
+    isPayer && selectedMemberUserId != null && householdManagement === 'members_pick';
+
+  const visitingDays = useMemo(
+    () => parseVisitingDays(subscription ?? null),
+    [subscription],
+  );
+
+  const visitingDaysMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const { day, timeOfDay } of visitingDays) {
+      map[day] = timeOfDay;
+    }
+    return map;
+  }, [visitingDays]);
 
   const weekOptions = useMemo(
     () =>
       weekOptionsForSubscription(
         subscription?.lastPaid,
         subscription?.expiresAt,
+        visitingDaysMap,
       ),
-    [subscription?.lastPaid, subscription?.expiresAt],
+    [subscription?.lastPaid, subscription?.expiresAt, visitingDaysMap],
   );
 
   const [selectedWeek, setSelectedWeek] = useState<string>(currentWeekStart());
@@ -132,35 +228,120 @@ export default function MealsScreen() {
     }
   }, [weekOptions, selectedWeek]);
 
+  const memberUserIds = useMemo(
+    () =>
+      memberOptions
+        .map((m) => m.userId)
+        .filter((id): id is number => id != null),
+    [memberOptions],
+  );
+
   const {
-    mealPlan,
-    loading: planLoading,
-    error: planError,
-    refetch: refetchPlan,
-  } = useGetMealPlanForWeek(selectedWeek);
+    mealPlan: soloMealPlan,
+    loading: soloPlanLoading,
+    error: soloPlanError,
+    refetch: refetchSoloPlan,
+    setMealPlan: setSoloMealPlan,
+  } = useGetMealPlanForWeek(showMemberPicker ? null : selectedWeek, targetUserId);
+
+  const {
+    plansByUserId: householdPlansByUserId,
+    loading: householdPlansLoading,
+    error: householdPlansError,
+    refetch: refetchHouseholdPlans,
+  } = useHouseholdWeekPlans({
+    weekStart: selectedWeek,
+    enabled: showMemberPicker,
+    payerUserId: subscription?.userId,
+    memberUserIds,
+  });
+
+  const mealPlan = showMemberPicker
+    ? ownerUserId != null
+      ? householdPlansByUserId[ownerUserId] ?? null
+      : null
+    : soloMealPlan;
+  const planLoading = showMemberPicker ? householdPlansLoading : soloPlanLoading;
+  const planError = showMemberPicker ? householdPlansError : soloPlanError;
+  const refetchPlan = showMemberPicker ? refetchHouseholdPlans : refetchSoloPlan;
+  const setMealPlan = showMemberPicker
+    ? (plan: MealPlan | null) => {
+        if (plan && ownerUserId != null) {
+          refetchHouseholdPlans();
+        }
+      }
+    : setSoloMealPlan;
+
+  const contextMealPlan = useMemo(
+    () =>
+      mealPlanMatchesContext(
+        mealPlan,
+        selectedWeek,
+        targetUserId,
+        ownerUserId,
+      )
+        ? mealPlan
+        : null,
+    [mealPlan, selectedWeek, targetUserId, ownerUserId],
+  );
+
+  const {
+    assignments: householdDayAssignments,
+    refetch: refetchHouseholdAssignments,
+  } = useHouseholdWeekAssignments({
+    weekStart: selectedWeek,
+    enabled: showMemberPicker,
+    selfUserId: user?.id,
+    payerUserId: subscription?.userId,
+    members,
+  });
 
   const { saveMealPlan, loading: saving } = useSaveMealPlan();
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [reviewNavigating, setReviewNavigating] = useState(false);
 
   const [meals, setMeals] = useState<Meal[] | null>(null);
   const [mealsError, setMealsError] = useState<string | null>(null);
   const [mealsLoading, setMealsLoading] = useState(false);
 
-  const visitingDays = useMemo(
-    () => parseVisitingDays(subscription ?? null),
-    [subscription],
-  );
-
   const [selections, setSelections] = useState<DaySelections>({} as DaySelections);
+  const [mealSizes, setMealSizes] = useState<DayMealSizes>({} as DayMealSizes);
   const [activeDay, setActiveDay] = useState<DayOfWeek | null>(null);
   const [applyToAll, setApplyToAll] = useState(false);
   const [shoppingNotes, setShoppingNotes] = useState('');
+  const [notesSheetOpen, setNotesSheetOpen] = useState(false);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [pendingDayOwners, setPendingDayOwners] = useState<
+    Partial<Record<DayOfWeek, number>>
+  >({});
+  const pendingDayOwnersRef = useRef(pendingDayOwners);
+  pendingDayOwnersRef.current = pendingDayOwners;
+  const collapsedInitialized = useRef(false);
+  const seededContextKey = useRef<string | null>(null);
+  const planningContextKey = showMemberPicker
+    ? selectedWeek
+    : `${selectedWeek}:${targetUserId ?? 'self'}`;
+
+  const householdPlansSeedKey = useMemo(() => {
+    if (!showMemberPicker) return planningContextKey;
+    const planIds = Object.entries(householdPlansByUserId)
+      .map(([userId, plan]) => {
+        const dayCount =
+          plan.days?.filter((d) => d.meals.length > 0).length ?? 0;
+        return `${userId}:${plan.id}:${dayCount}`;
+      })
+      .sort()
+      .join(',');
+    return `${planningContextKey}|${planIds}`;
+  }, [showMemberPicker, planningContextKey, householdPlansByUserId]);
 
   const planDayMap = useMemo(() => {
     const map = new Map<DayOfWeek, MealPlanDay>();
-    for (const d of mealPlan?.days ?? []) map.set(d.dayOfWeek, d);
+    for (const d of contextMealPlan?.days ?? []) map.set(d.dayOfWeek, d);
     return map;
-  }, [mealPlan?.days]);
+  }, [contextMealPlan?.days]);
 
   const mealSections = useMemo(() => {
     if (!meals?.length) return [];
@@ -185,7 +366,97 @@ export default function MealsScreen() {
     return sections;
   }, [meals]);
 
-  const isActive = subscription?.status === 'active';
+  const displaySections = useMemo(
+    () =>
+      mealSections.map((section) => ({
+        ...section,
+        data: collapsedSections.has(section.title) ? [] : section.data,
+      })),
+    [mealSections, collapsedSections],
+  );
+
+  const toggleSection = useCallback((title: string) => {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (mealSections.length === 0 || collapsedInitialized.current) return;
+    collapsedInitialized.current = true;
+    setCollapsedSections(new Set(mealSections.map((s) => s.title)));
+  }, [mealSections]);
+
+  const isActive = isSubscriptionEntitled(subscription);
+
+  const showQuotaError = (err: string) => {
+    if (err.toLowerCase().includes('quota_exceeded')) {
+      const match = err.match(/billing_days=(\d+)\/(\d+)/i);
+      if (match) {
+        const [, used, cap] = match;
+        setQuotaSnackbar(true);
+        Alert.alert(
+          'Session limit reached',
+          `This member has ${cap} cook-in sessions per billing month and ${used} are already planned. Check Settings → Household session allocation, or remove a visit day from another week.`,
+        );
+        return;
+      }
+      setQuotaSnackbar(true);
+      Alert.alert(
+        'Session limit reached',
+        'This member has used their cook-in sessions for the billing month. Check Settings → Household to review session allocation.',
+      );
+      return;
+    }
+    if (err.toLowerCase().includes('household_day_already_claimed')) {
+      Alert.alert(
+        'Day already assigned',
+        'Only one household member can be planned per visit day. Pick another day or change who you are planning for.',
+      );
+      void refetchHouseholdAssignments();
+      return;
+    }
+    Alert.alert('Could not save', err);
+  };
+
+  const applyPlanToLocalState = useCallback(
+    (plan: MealPlan) => {
+      const seeded = seedSelectionsFromPlan(visitingDays, plan.days);
+      const seededSizes = seedMealSizesFromPlan(visitingDays, plan.days);
+      setSelections(seeded);
+      setMealSizes(seededSizes);
+      seededContextKey.current = planningContextKey;
+      setShoppingNotes(plan.shoppingNotes ?? '');
+    },
+    [visitingDays, planningContextKey],
+  );
+
+  const dayAssignedTo = useCallback(
+    (day: DayOfWeek) => householdDayAssignments[day] ?? null,
+    [householdDayAssignments],
+  );
+
+  const effectiveDayOwner = useCallback(
+    (day: DayOfWeek): number | null => {
+      if (pendingDayOwners[day] != null) return pendingDayOwners[day] ?? null;
+      const assigned = householdDayAssignments[day];
+      if (assigned) return assigned.userId;
+      if ((selections[day]?.size ?? 0) > 0 && ownerUserId != null) {
+        return ownerUserId;
+      }
+      return null;
+    },
+    [pendingDayOwners, householdDayAssignments, selections, ownerUserId],
+  );
+
+  const targetUserIdForOwner = useCallback(
+    (userId: number) =>
+      userId === subscription?.userId ? undefined : userId,
+    [subscription?.userId],
+  );
 
   useEffect(() => {
     if (!isActive) return;
@@ -209,21 +480,107 @@ export default function MealsScreen() {
   }, [isActive]);
 
   useEffect(() => {
-    if (!visitingDays.length) {
-      setSelections({} as DaySelections);
-      setActiveDay(null);
-      return;
-    }
-    const seeded = mealPlan
-      ? seedSelectionsFromPlan(visitingDays, mealPlan.days)
-      : emptySelections(visitingDays);
-    setSelections(seeded);
-    setActiveDay((prev) => (prev && seeded[prev] ? prev : visitingDays[0].day));
-  }, [mealPlan, visitingDays]);
+    setPendingDayOwners({});
+  }, [selectedWeek]);
 
   useEffect(() => {
-    setShoppingNotes(mealPlan?.shoppingNotes ?? '');
-  }, [mealPlan?.id, mealPlan?.shoppingNotes]);
+    if (!visitingDays.length) {
+      setSelections({} as DaySelections);
+      setMealSizes({} as DayMealSizes);
+      setActiveDay(null);
+      setPendingDayOwners({});
+      seededContextKey.current = null;
+      return;
+    }
+    if (planLoading) {
+      if (seededContextKey.current !== planningContextKey) {
+        setSelections(emptySelections(visitingDays));
+        setMealSizes(emptyMealSizes(visitingDays));
+      }
+      return;
+    }
+
+    if (showMemberPicker) {
+      if (seededContextKey.current === householdPlansSeedKey) {
+        return;
+      }
+      const merged = mergeHouseholdWeekPlans(visitingDays, householdPlansByUserId);
+      const prevWeek = seededContextKey.current?.split('|')[0] ?? null;
+      const sameWeek = prevWeek === planningContextKey;
+
+      if (!sameWeek) {
+        setSelections(merged.selections);
+        setMealSizes(merged.mealSizes);
+        setPendingDayOwners({});
+      } else {
+        const pending = pendingDayOwnersRef.current;
+        setSelections((prev) => {
+          const next = { ...merged.selections };
+          for (const { day } of visitingDays) {
+            const pendingOwner = pending[day];
+            const localCount = prev[day]?.size ?? 0;
+            const serverCount = merged.selections[day]?.size ?? 0;
+            if (pendingOwner != null || localCount > serverCount) {
+              next[day] = prev[day] ?? merged.selections[day];
+            }
+          }
+          return next;
+        });
+        setMealSizes((prev) => {
+          const next = { ...merged.mealSizes };
+          for (const { day } of visitingDays) {
+            const pendingOwner = pending[day];
+            const localCount = prev[day] ? Object.keys(prev[day]).length : 0;
+            const serverCount = merged.mealSizes[day]
+              ? Object.keys(merged.mealSizes[day]).length
+              : 0;
+            if (pendingOwner != null || localCount > serverCount) {
+              next[day] = prev[day] ?? merged.mealSizes[day];
+            }
+          }
+          return next;
+        });
+        setPendingDayOwners((prev) => {
+          let changed = false;
+          const next = { ...prev };
+          for (const { day } of visitingDays) {
+            const serverOwner = merged.dayOwners[day];
+            if (serverOwner != null && next[day] === serverOwner) {
+              delete next[day];
+              changed = true;
+            }
+          }
+          return changed ? next : prev;
+        });
+      }
+      seededContextKey.current = householdPlansSeedKey;
+      setActiveDay((prev) => (prev && merged.selections[prev] ? prev : visitingDays[0].day));
+      return;
+    }
+
+    const seeded = contextMealPlan
+      ? seedSelectionsFromPlan(visitingDays, contextMealPlan.days)
+      : emptySelections(visitingDays);
+    const seededSizes = contextMealPlan
+      ? seedMealSizesFromPlan(visitingDays, contextMealPlan.days)
+      : emptyMealSizes(visitingDays);
+    setSelections(seeded);
+    setMealSizes(seededSizes);
+    seededContextKey.current = planningContextKey;
+    setActiveDay((prev) => (prev && seeded[prev] ? prev : visitingDays[0].day));
+  }, [
+    contextMealPlan,
+    visitingDays,
+    planLoading,
+    planningContextKey,
+    householdPlansSeedKey,
+    showMemberPicker,
+    householdPlansByUserId,
+  ]);
+
+  useEffect(() => {
+    setShoppingNotes(contextMealPlan?.shoppingNotes ?? '');
+  }, [contextMealPlan?.id, contextMealPlan?.shoppingNotes]);
 
   const dayLocked = useCallback(
     (weekStart: string, day: DayOfWeek, timeOfDay: string) =>
@@ -237,52 +594,203 @@ export default function MealsScreen() {
     return new Set([cur, addWeeks(cur, 1)]);
   }, []);
   const canReviewSelectedWeek = payableWeeks.has(selectedWeek);
-  const mealPlanIdForReview = mealPlan?.id;
+  const mealPlanIdForReview = contextMealPlan?.id;
   /** Past weeks: still show Review when weekly ingredients were never paid. */
   const unpaidPastIngredientWeek =
     mealPlanIdForReview != null &&
-    mealPlan?.ingredientPaymentStatus === 'unpaid' &&
+    contextMealPlan?.ingredientPaymentStatus === 'unpaid' &&
     selectedWeek < currentWeekStart();
   const canOpenIngredientCheckout =
     mealPlanIdForReview != null &&
     (canReviewSelectedWeek || unpaidPastIngredientWeek);
 
-  const ingredientsPaidForWeek =
-    mealPlan?.ingredientPaymentStatus === 'paid';
+  const ingredientsPaidForWeek = contextMealPlan?.ingredientPaymentStatus === 'paid';
 
   useEffect(() => {
-    if (mealPlan?.ingredientPaymentStatus === 'paid' && applyToAll) {
+    if (contextMealPlan?.ingredientPaymentStatus === 'paid' && applyToAll) {
       setApplyToAll(false);
     }
-  }, [mealPlan?.ingredientPaymentStatus, mealPlan?.weekStart, applyToAll]);
+  }, [contextMealPlan?.ingredientPaymentStatus, contextMealPlan?.weekStart, applyToAll]);
 
   const toggleMeal = useCallback((day: DayOfWeek, mealId: number) => {
+    if (showMemberPicker && ownerUserId != null) {
+      setPendingDayOwners((prev) => ({ ...prev, [day]: ownerUserId }));
+    }
     setSelections((prev) => {
       const current = prev[day] ?? new Set<number>();
       const next = new Set(current);
+      let sizesUpdate: 'add' | 'remove' | null = null;
       if (next.has(mealId)) {
         next.delete(mealId);
+        sizesUpdate = 'remove';
       } else if (next.size < MAX_PER_DAY) {
         next.add(mealId);
+        sizesUpdate = 'add';
+      }
+      if (sizesUpdate === 'remove') {
+        setMealSizes((sizesPrev) => {
+          const daySizes = { ...(sizesPrev[day] ?? {}) };
+          delete daySizes[mealId];
+          return { ...sizesPrev, [day]: daySizes };
+        });
+      } else if (sizesUpdate === 'add') {
+        setMealSizes((sizesPrev) => ({
+          ...sizesPrev,
+          [day]: {
+            ...(sizesPrev[day] ?? {}),
+            [mealId]: sizesPrev[day]?.[mealId] ?? DEFAULT_MEAL_SIZE,
+          },
+        }));
       }
       return { ...prev, [day]: next };
     });
-  }, []);
+  }, [showMemberPicker, ownerUserId]);
+
+  const setMealSize = useCallback(
+    (day: DayOfWeek, mealId: number, size: MealSize) => {
+      setMealSizes((prev) => ({
+        ...prev,
+        [day]: { ...(prev[day] ?? {}), [mealId]: size },
+      }));
+    },
+    [],
+  );
+
+  const buildDayInput = useCallback(
+    (day: DayOfWeek): MealPlanDayInput | null => {
+      const mealIds = Array.from(selections[day] ?? []);
+      if (mealIds.length === 0) return null;
+      return {
+        dayOfWeek: day,
+        mealIds,
+        mealNotes: mealIds.map((mealId) => ({
+          mealId,
+          mealSize: mealSizes[day]?.[mealId] ?? DEFAULT_MEAL_SIZE,
+        })),
+      };
+    },
+    [selections, mealSizes],
+  );
 
   const buildPayloadForWeek = useCallback(
     (weekStart: string): MealPlanDayInput[] =>
       visitingDays
         .filter(({ day, timeOfDay }) => !dayLocked(weekStart, day, timeOfDay))
-        .map(({ day }) => ({
-          dayOfWeek: day,
-          mealIds: Array.from(selections[day] ?? []),
-        }))
-        .filter((d) => d.mealIds.length > 0),
-    [visitingDays, selections, dayLocked],
+        .map(({ day }) => buildDayInput(day))
+        .filter((d): d is MealPlanDayInput => d != null),
+    [visitingDays, dayLocked, buildDayInput],
   );
 
-  const saveSingleWeek = () => {
+  const saveHouseholdWeek = async (): Promise<boolean> => {
+    const clearOps: Array<{ userId: number; day: DayOfWeek }> = [];
+    const plansAfterClear = { ...householdPlansByUserId };
+
+    for (const { day } of visitingDays) {
+      const serverOwner = householdDayAssignments[day]?.userId;
+      const targetOwner = effectiveDayOwner(day);
+      if (!serverOwner || targetOwner == null || serverOwner === targetOwner) {
+        continue;
+      }
+      clearOps.push({ userId: serverOwner, day });
+    }
+
+    for (const { userId, day } of clearOps) {
+      const plan = plansAfterClear[userId];
+      if (!plan) continue;
+      const result = await updateMealPlan(
+        plan.id,
+        { days: [{ dayOfWeek: day, mealIds: [], mealNotes: [] }] },
+        targetUserIdForOwner(userId),
+      );
+      if (result.error) {
+        showQuotaError(String(result.error));
+        return false;
+      }
+      if (result.mealPlan) {
+        plansAfterClear[userId] = result.mealPlan;
+      }
+    }
+
+    const daysByOwner = new Map<number, MealPlanDayInput[]>();
+    for (const { day, timeOfDay } of visitingDays) {
+      if (dayLocked(selectedWeek, day, timeOfDay)) continue;
+      const owner = effectiveDayOwner(day);
+      if (owner == null) continue;
+      const input = buildDayInput(day);
+      const serverOwner = householdDayAssignments[day]?.userId;
+      if (input) {
+        const bucket = daysByOwner.get(owner) ?? [];
+        bucket.push(input);
+        daysByOwner.set(owner, bucket);
+      } else if (
+        serverOwner === owner &&
+        (householdDayAssignments[day]?.mealCount ?? 0) > 0
+      ) {
+        const bucket = daysByOwner.get(owner) ?? [];
+        bucket.push({ dayOfWeek: day, mealIds: [], mealNotes: [] });
+        daysByOwner.set(owner, bucket);
+      }
+    }
+
+    if (daysByOwner.size === 0 && clearOps.length === 0) {
+      Alert.alert(
+        'Nothing to save',
+        'Pick at least one meal for a day that is still open.',
+      );
+      return false;
+    }
+
+    for (const [userId, days] of daysByOwner) {
+      const plan = plansAfterClear[userId];
+      const notesPayload =
+        userId === ownerUserId ? shoppingNotes.trim() || null : undefined;
+      const result = plan
+        ? await updateMealPlan(
+            plan.id,
+            {
+              days,
+              ...(notesPayload !== undefined ? { shoppingNotes: notesPayload } : {}),
+            },
+            targetUserIdForOwner(userId),
+          )
+        : await createMealPlan(
+            {
+              weekStart: selectedWeek,
+              days,
+              shoppingNotes: notesPayload ?? null,
+            },
+            targetUserIdForOwner(userId),
+          );
+      if (result.error) {
+        showQuotaError(String(result.error));
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const saveSingleWeek = async () => {
     if (ingredientsPaidForWeek) return;
+
+    if (showMemberPicker) {
+      setBulkSaving(true);
+      try {
+        const ok = await saveHouseholdWeek();
+        if (!ok) return;
+        Alert.alert(
+          'Saved',
+          `Your meals for ${weekRangeLabel(selectedWeek)} are locked in.`,
+        );
+        setPendingDayOwners({});
+        await refetchHouseholdPlans();
+        void refetchHouseholdAssignments();
+      } finally {
+        setBulkSaving(false);
+      }
+      return;
+    }
+
     const payloadDays = buildPayloadForWeek(selectedWeek);
     if (payloadDays.length === 0) {
       Alert.alert(
@@ -296,17 +804,29 @@ export default function MealsScreen() {
       payload: {
         weekStart: selectedWeek,
         days: payloadDays,
-        existingPlanId: mealPlan?.id,
+        existingPlanId: contextMealPlan?.id,
         shoppingNotes: shoppingNotes.trim() || null,
+        targetUserId,
       },
-      onSuccess: () => {
+      onSuccess: (saved) => {
         Alert.alert(
           'Saved',
           `Your meals for ${weekRangeLabel(selectedWeek)} are locked in.`,
         );
-        refetchPlan();
+        if (
+          saved &&
+          mealPlanMatchesContext(saved, selectedWeek, targetUserId, ownerUserId)
+        ) {
+          setMealPlan(saved);
+          applyPlanToLocalState(saved);
+        } else {
+          void refetchPlan();
+        }
+        if (showMemberPicker) {
+          void refetchHouseholdAssignments();
+        }
       },
-      onError: (err) => Alert.alert('Could not save', err),
+      onError: showQuotaError,
     });
   };
 
@@ -320,6 +840,7 @@ export default function MealsScreen() {
       const { mealPlans, error: rangeError } = await fetchMealPlansInRange(
         first,
         last,
+        targetUserId,
       );
       if (rangeError) {
         Alert.alert('Could not save', String(rangeError));
@@ -340,12 +861,12 @@ export default function MealsScreen() {
             ? await updateMealPlan(existingId, {
                 days: payloadDays,
                 shoppingNotes: shoppingNotes.trim() || null,
-              })
+              }, targetUserId)
             : await createMealPlan({
                 weekStart: week,
                 days: payloadDays,
                 shoppingNotes: shoppingNotes.trim() || null,
-              });
+              }, targetUserId);
           return { week, skipped: false as const, error: res.error };
         }),
       );
@@ -368,6 +889,9 @@ export default function MealsScreen() {
         );
       }
       refetchPlan();
+      if (showMemberPicker) {
+        void refetchHouseholdAssignments();
+      }
     } finally {
       setBulkSaving(false);
     }
@@ -381,11 +905,128 @@ export default function MealsScreen() {
     }
   };
 
+  const goToReview = async () => {
+    if (!mealPlanIdForReview) return;
+
+    const navigateToReview = () => {
+      (
+        navigation as unknown as {
+          navigate: (
+            name: 'IngredientCheckout',
+            params: { mealPlanId: number; refreshToken: number },
+          ) => void;
+        }
+      ).navigate('IngredientCheckout', {
+        mealPlanId: mealPlanIdForReview,
+        refreshToken: Date.now(),
+      });
+    };
+
+    const hasMealsToReview =
+      (contextMealPlan?.days.some((d) => d.meals.length > 0) ?? false) ||
+      visitingDays.some(({ day }) => (selections[day]?.size ?? 0) > 0);
+
+    if (ingredientsPaidForWeek) {
+      navigateToReview();
+      return;
+    }
+
+    const payloadDays = buildPayloadForWeek(selectedWeek);
+
+    if (payloadDays.length === 0) {
+      if (hasMealsToReview) {
+        navigateToReview();
+        return;
+      }
+      Alert.alert(
+        'Nothing to review',
+        'Pick at least one meal for this week first.',
+      );
+      return;
+    }
+
+    setReviewNavigating(true);
+    try {
+      if (showMemberPicker) {
+        const ok = await saveHouseholdWeek();
+        if (!ok) return;
+        await refetchHouseholdPlans();
+        void refetchHouseholdAssignments();
+        navigateToReview();
+        return;
+      }
+
+      const result = contextMealPlan?.id
+        ? await updateMealPlan(contextMealPlan.id, {
+            days: payloadDays,
+            shoppingNotes: shoppingNotes.trim() || null,
+          }, targetUserId)
+        : await createMealPlan({
+            weekStart: selectedWeek,
+            days: payloadDays,
+            shoppingNotes: shoppingNotes.trim() || null,
+          }, targetUserId);
+
+      if (result.error) {
+        showQuotaError(String(result.error));
+        return;
+      }
+
+      if (
+        result.mealPlan &&
+        mealPlanMatchesContext(
+          result.mealPlan,
+          selectedWeek,
+          targetUserId,
+          ownerUserId,
+        )
+      ) {
+        setMealPlan(result.mealPlan);
+        applyPlanToLocalState(result.mealPlan);
+      } else {
+        void refetchPlan();
+      }
+      if (showMemberPicker) {
+        void refetchHouseholdAssignments();
+      }
+      navigateToReview();
+    } finally {
+      setReviewNavigating(false);
+    }
+  };
+
+  const selectPlanningMember = useCallback(
+    (userId: number | null) => {
+      const nextOwnerId = userId ?? user?.id ?? subscription?.userId;
+      if (
+        showMemberPicker &&
+        activeDay &&
+        nextOwnerId != null &&
+        (selections[activeDay]?.size ?? 0) > 0
+      ) {
+        setPendingDayOwners((prev) => ({ ...prev, [activeDay]: nextOwnerId }));
+      }
+      setSelectedMemberUserId(userId);
+    },
+    [
+      showMemberPicker,
+      activeDay,
+      selections,
+      user?.id,
+      subscription?.userId,
+      setSelectedMemberUserId,
+    ],
+  );
+
   const goToBooking = () => {
     const parent = navigation.getParent();
     if (parent) {
       (parent as { navigate: (name: string) => void }).navigate('Booking');
     }
+  };
+
+  const goToSubscription = () => {
+    (navigation as { navigate: (screen: string) => void }).navigate('Subscription');
   };
 
   if (subscriptionLoading) {
@@ -397,6 +1038,34 @@ export default function MealsScreen() {
   }
 
   if (!isActive) {
+    if (subscription && subscriptionNeedsRenew(subscription)) {
+      return (
+        <View style={[styles.centered, styles.padded]}>
+          <Text style={styles.gateTitle}>Subscription period has ended</Text>
+          <Text style={styles.gateBody}>
+            {isPayer
+              ? 'Renew your subscription to plan meals for upcoming weeks.'
+              : 'Ask your payer to renew so you can plan meals again.'}
+          </Text>
+          {isPayer ? (
+            <Button
+              mode="contained"
+              onPress={() => renew()}
+              loading={renewLoading}
+              disabled={renewLoading}
+              style={styles.primaryBtn}
+            >
+              Renew now
+            </Button>
+          ) : (
+            <Button mode="contained" onPress={goToSubscription} style={styles.primaryBtn}>
+              View plan
+            </Button>
+          )}
+        </View>
+      );
+    }
+    if (shouldShowSubscribeCTA) {
     return (
       <View style={[styles.centered, styles.padded]}>
         <Image
@@ -411,6 +1080,12 @@ export default function MealsScreen() {
         <Button mode="contained" onPress={goToBooking} style={styles.primaryBtn}>
           Start your subscription
         </Button>
+      </View>
+    );
+    }
+    return (
+      <View style={[styles.centered, styles.padded]}>
+        <Text style={styles.gateTitle}>No active subscription</Text>
       </View>
     );
   }
@@ -441,15 +1116,75 @@ export default function MealsScreen() {
   const loadError = mealsError ?? planError;
   const activeDayInfo = visitingDays.find((d) => d.day === activeDay) ?? visitingDays[0];
   const activeSelection = selections[activeDayInfo.day] ?? new Set<number>();
+  const activeDayAssignment = dayAssignedTo(activeDayInfo.day);
+  const activeDayOwner = effectiveDayOwner(activeDayInfo.day);
   const activeLocked =
     dayLocked(selectedWeek, activeDayInfo.day, activeDayInfo.timeOfDay) ||
-    ingredientsPaidForWeek;
+    ingredientsPaidForWeek ||
+    mealsReadOnly;
   const activePlanDay = planDayMap.get(activeDayInfo.day);
   const activeSourceLabel = activePlanDay && SOURCE_LABEL[activePlanDay.source];
-  const savingAny = saving || bulkSaving;
+  const savingAny = saving || bulkSaving || reviewNavigating;
 
   return (
     <View style={styles.container}>
+      {mealsReadOnly ? (
+        <View style={styles.modeBanner}>
+          <Text style={styles.modeBannerText}>
+            Your payer assigns meals for the household.
+          </Text>
+        </View>
+      ) : null}
+      {showMemberPicker ? (
+        <View style={styles.pickerRow}>
+          <Text style={styles.pickerLabel}>Planning for</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <TouchableOpacity
+              style={[
+                styles.memberChip,
+                selectedMemberUserId == null && styles.memberChipSelected,
+              ]}
+              onPress={() => selectPlanningMember(null)}
+            >
+              <Text
+                style={[
+                  styles.memberChipText,
+                  selectedMemberUserId == null && styles.memberChipTextSelected,
+                ]}
+              >
+                Me
+              </Text>
+            </TouchableOpacity>
+            {memberOptions.map((m) => (
+              <TouchableOpacity
+                key={m.id}
+                style={[
+                  styles.memberChip,
+                  selectedMemberUserId === m.userId && styles.memberChipSelected,
+                ]}
+                onPress={() => selectPlanningMember(m.userId ?? null)}
+              >
+                <Text
+                  style={[
+                    styles.memberChipText,
+                    selectedMemberUserId === m.userId && styles.memberChipTextSelected,
+                  ]}
+                >
+                  {m.inviteEmail?.split('@')[0] ?? m.invitePhone ?? 'Member'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      ) : null}
+      {planningForOther ? (
+        <TouchableOpacity
+          style={styles.backToMeals}
+          onPress={() => selectPlanningMember(null)}
+        >
+          <Text style={styles.backToMealsText}>Back to my meals</Text>
+        </TouchableOpacity>
+      ) : null}
       <View style={styles.header}>
         <View style={styles.titleRow}>
           <Text style={styles.title}>Plan your meals</Text>
@@ -458,7 +1193,7 @@ export default function MealsScreen() {
             <Switch
               value={applyToAll}
               onValueChange={setApplyToAll}
-              disabled={ingredientsPaidForWeek || savingAny}
+              disabled={ingredientsPaidForWeek || savingAny || mealsReadOnly}
               trackColor={{ false: '#d1d5db', true: CHEF_ORANGE }}
               thumbColor="#fff"
             />
@@ -499,16 +1234,32 @@ export default function MealsScreen() {
           {visitingDays.map(({ day, timeOfDay }) => {
             const locked =
               dayLocked(selectedWeek, day, timeOfDay) || ingredientsPaidForWeek;
+            const assignment = dayAssignedTo(day);
             const count = selections[day]?.size ?? 0;
             const selected = activeDay === day;
+            const ownerId = effectiveDayOwner(day);
+            const showAssignee =
+              assignment != null &&
+              ownerId != null &&
+              ownerId === assignment.userId;
             return (
               <TouchableOpacity
                 key={day}
-                onPress={() => setActiveDay(day)}
+                onPress={() => {
+                  if (assignment) {
+                    const memberId =
+                      assignment.userId === subscription?.userId
+                        ? null
+                        : assignment.userId;
+                    selectPlanningMember(memberId);
+                  }
+                  setActiveDay(day);
+                }}
                 disabled={savingAny}
                 style={[
                   styles.dayChip,
                   selected && styles.dayChipSelected,
+                  showAssignee && styles.dayChipClaimed,
                   savingAny && styles.chipDisabled,
                 ]}
               >
@@ -525,8 +1276,15 @@ export default function MealsScreen() {
                     styles.dayChipMeta,
                     selected && styles.dayChipMetaSelected,
                   ]}
+                  numberOfLines={1}
                 >
-                  {locked ? 'Locked' : `${count}/${MAX_PER_DAY}`}
+                  {locked
+                    ? 'Locked'
+                    : showAssignee
+                      ? assignment.label
+                      : count > 0
+                        ? `${count}/${MAX_PER_DAY}`
+                        : '—'}
                 </Text>
               </TouchableOpacity>
             );
@@ -539,6 +1297,12 @@ export default function MealsScreen() {
           </Text>
           {ingredientsPaidForWeek ? (
             <Text style={styles.lockedTag}>Ingredients paid — selections locked</Text>
+          ) : activeDayAssignment &&
+            activeDayOwner != null &&
+            activeDayOwner === activeDayAssignment.userId ? (
+            <Text style={styles.counter}>
+              Planned for {activeDayAssignment.label}
+            </Text>
           ) : activeLocked ? (
             <Text style={styles.lockedTag}>Cutoff passed — locked</Text>
           ) : (
@@ -551,30 +1315,51 @@ export default function MealsScreen() {
           ) : null}
         </View>
 
-        {!ingredientsPaidForWeek ? (
-          <View style={styles.notesBox}>
-            <Text style={styles.notesLabel}>Shopping notes (optional)</Text>
-            <Text style={styles.notesHint}>
-              Brand preferences, substitutes, or items to avoid — saved for this week.
-            </Text>
-            <TextInput
-              style={styles.notesInput}
-              value={shoppingNotes}
-              onChangeText={setShoppingNotes}
-              placeholder="e.g. Use Gino tomato paste, no cilantro"
-              placeholderTextColor={GRAY_400}
-              multiline
-              maxLength={2000}
-              editable={!savingAny && !activeLocked}
+        {(!ingredientsPaidForWeek || contextMealPlan?.effectiveShoppingNotes) ? (
+          <TouchableOpacity
+            style={styles.notesBtn}
+            onPress={() => setNotesSheetOpen(true)}
+            disabled={savingAny}
+          >
+            <MaterialCommunityIcons
+              name="note-text-outline"
+              size={20}
+              color={CHEF_ORANGE}
             />
-          </View>
-        ) : mealPlan?.effectiveShoppingNotes ? (
-          <View style={styles.notesBox}>
-            <Text style={styles.notesLabel}>Shopping notes</Text>
-            <Text style={styles.notesReadonly}>{mealPlan.effectiveShoppingNotes}</Text>
-          </View>
+            <Text style={styles.notesBtnText}>
+              {ingredientsPaidForWeek ? 'View Shopping & Meal Notes' : 'Shopping & Meal Notes'}
+            </Text>
+            {!ingredientsPaidForWeek && shoppingNotes.trim() ? (
+              <View style={styles.notesBadge}>
+                <Text style={styles.notesBadgeText}>Added</Text>
+              </View>
+            ) : null}
+            <MaterialCommunityIcons
+              name="chevron-up"
+              size={20}
+              color={GRAY_600}
+              style={styles.notesBtnChevron}
+            />
+          </TouchableOpacity>
         ) : null}
       </View>
+
+      <ShoppingNotesSheet
+        visible={notesSheetOpen}
+        value={
+          ingredientsPaidForWeek
+            ? contextMealPlan?.effectiveShoppingNotes ?? ''
+            : shoppingNotes
+        }
+        onChange={setShoppingNotes}
+        onClose={() => setNotesSheetOpen(false)}
+        readOnly={ingredientsPaidForWeek}
+        title={
+          ingredientsPaidForWeek
+            ? 'Shopping & Meal Notes'
+            : 'Shopping & Meal Notes (optional)'
+        }
+      />
 
       {isLoading && !meals ? (
         <View style={styles.centered}>
@@ -587,61 +1372,131 @@ export default function MealsScreen() {
       ) : (
         <View style={styles.listWrap}>
           <SectionList
-            sections={mealSections}
+            sections={displaySections}
             keyExtractor={(m) => String(m.id)}
-            stickySectionHeadersEnabled
+            stickySectionHeadersEnabled={false}
             contentContainerStyle={styles.listContent}
-            renderSectionHeader={({ section }) => (
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionHeaderText}>{section.title}</Text>
-              </View>
-            )}
+            renderSectionHeader={({ section }) => {
+              const collapsed = collapsedSections.has(section.title);
+              const fullSection = mealSections.find((s) => s.title === section.title);
+              const mealCount = fullSection?.data.length ?? 0;
+              const selectedCount =
+                fullSection?.data.filter((meal) => activeSelection.has(meal.id))
+                  .length ?? 0;
+
+              return (
+                <TouchableOpacity
+                  style={styles.sectionHeader}
+                  onPress={() => toggleSection(section.title)}
+                  activeOpacity={0.7}
+                  accessibilityRole="button"
+                  accessibilityState={{ expanded: !collapsed }}
+                  accessibilityLabel={`${capitalizeString(section.title)} meals`}
+                >
+                  <View style={styles.sectionHeaderText}>
+                    <Text style={styles.sectionHeaderTitle}>
+                      {capitalizeString(section.title)}
+                    </Text>
+                    <Text style={styles.sectionHeaderMeta}>
+                      {mealCount} {mealCount === 1 ? 'meal' : 'meals'}
+                      {selectedCount > 0
+                        ? ` · ${selectedCount} selected`
+                        : ''}
+                    </Text>
+                  </View>
+                  <MaterialCommunityIcons
+                    name={collapsed ? 'chevron-down' : 'chevron-up'}
+                    size={22}
+                    color={GRAY_600}
+                  />
+                </TouchableOpacity>
+              );
+            }}
             renderItem={({ item }) => {
               const isSelected = activeSelection.has(item.id);
               const capReached = activeSelection.size >= MAX_PER_DAY;
               const isDisabled =
                 activeLocked || (!isSelected && capReached) || savingAny;
+              const currentSize =
+                mealSizes[activeDayInfo.day]?.[item.id] ?? DEFAULT_MEAL_SIZE;
               return (
-                <TouchableOpacity
+                <View
                   style={[
                     styles.row,
                     isSelected && styles.rowSelected,
-                    isDisabled && styles.rowDisabled,
+                    isDisabled && !isSelected && styles.rowDisabled,
                   ]}
-                  onPress={() => toggleMeal(activeDayInfo.day, item.id)}
-                  disabled={isDisabled}
-                  activeOpacity={0.7}
                 >
-                  {item.imageUrl ? (
-                    <Image source={{ uri: item.imageUrl }} style={styles.thumb} />
-                  ) : (
-                    <View style={[styles.thumb, styles.thumbPlaceholder]}>
-                      <MaterialCommunityIcons
-                        name="silverware-fork-knife"
-                        size={26}
-                        color={CHEF_ORANGE}
-                      />
-                    </View>
-                  )}
-                  <View style={styles.rowBody}>
-                    <Text style={styles.mealName} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    {item.description ? (
-                      <Text style={styles.mealDesc} numberOfLines={2}>
-                        {item.description}
-                      </Text>
-                    ) : null}
-                  </View>
-                  <View
-                    style={[
-                      styles.checkbox,
-                      isSelected && styles.checkboxSelected,
-                    ]}
+                  <TouchableOpacity
+                    style={styles.rowMain}
+                    onPress={() => toggleMeal(activeDayInfo.day, item.id)}
+                    disabled={isDisabled}
+                    activeOpacity={0.7}
                   >
-                    {isSelected ? <Text style={styles.checkmark}>✓</Text> : null}
-                  </View>
-                </TouchableOpacity>
+                    {item.imageUrl ? (
+                      <Image source={{ uri: item.imageUrl }} style={styles.thumb} />
+                    ) : (
+                      <View style={[styles.thumb, styles.thumbPlaceholder]}>
+                        <MaterialCommunityIcons
+                          name="silverware-fork-knife"
+                          size={26}
+                          color={CHEF_ORANGE}
+                        />
+                      </View>
+                    )}
+                    <View style={styles.rowBody}>
+                      <Text style={styles.mealName} numberOfLines={1}>
+                        {item.name}
+                      </Text>
+                      {item.description ? (
+                        <Text style={styles.mealDesc} numberOfLines={2}>
+                          {item.description}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <View
+                      style={[
+                        styles.checkbox,
+                        isSelected && styles.checkboxSelected,
+                      ]}
+                    >
+                      {isSelected ? <Text style={styles.checkmark}>✓</Text> : null}
+                    </View>
+                  </TouchableOpacity>
+                  {isSelected ? (
+                    <View style={styles.sizeRow}>
+                      <Text style={styles.sizeLabel}>Size</Text>
+                      <View style={styles.sizeChips}>
+                        {MEAL_SIZE_OPTIONS.map((size) => {
+                          const selected = currentSize === size;
+                          return (
+                            <TouchableOpacity
+                              key={size}
+                              style={[
+                                styles.sizeChip,
+                                selected && styles.sizeChipSelected,
+                              ]}
+                              onPress={() =>
+                                setMealSize(activeDayInfo.day, item.id, size)
+                              }
+                              disabled={activeLocked || savingAny}
+                            >
+                              <Text
+                                style={[
+                                  styles.sizeChipText,
+                                  selected && styles.sizeChipTextSelected,
+                                ]}
+                              >
+                                {size}
+                                {size === DEFAULT_MEAL_SIZE ? ' (Default)' : ''}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </View>
+                  ) : null}
+                </View>
               );
             }}
             ListEmptyComponent={
@@ -672,7 +1527,11 @@ export default function MealsScreen() {
                 onPress={onConfirm}
                 loading={savingAny}
                 disabled={savingAny}
-                style={[styles.primaryBtn, styles.footerBtn]}
+                style={[
+                  styles.primaryBtn,
+                  styles.footerBtn,
+                  !canOpenIngredientCheckout && styles.footerBtnFull,
+                ]}
               >
                 Save
               </Button>
@@ -682,18 +1541,8 @@ export default function MealsScreen() {
                 mode="outlined"
                 textColor={CHEF_ORANGE}
                 disabled={savingAny}
-                onPress={() =>
-                  (
-                    navigation as unknown as {
-                      navigate: (
-                        name: 'IngredientCheckout',
-                        params: { mealPlanId: number },
-                      ) => void;
-                    }
-                  ).navigate('IngredientCheckout', {
-                    mealPlanId: mealPlanIdForReview,
-                  })
-                }
+                loading={reviewNavigating}
+                onPress={goToReview}
                 style={[styles.outlinedBtn, styles.footerBtn]}
               >
                 Review
@@ -702,12 +1551,51 @@ export default function MealsScreen() {
           </View>
         </View>
       ) : null}
+
+      <Snackbar
+        visible={quotaSnackbar}
+        onDismiss={() => setQuotaSnackbar(false)}
+        duration={3500}
+        style={{ backgroundColor: '#101928' }}
+      >
+        You've reached this week's meal limit. Remove a meal or wait for next week.
+      </Snackbar>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fafafa' },
+  modeBanner: {
+    backgroundColor: '#fff8f0',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#fde68a',
+  },
+  modeBannerText: { fontSize: 14, color: GRAY_600, fontWeight: '600' },
+  pickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    gap: 8,
+  },
+  pickerLabel: { fontSize: 14, fontWeight: '600', color: GRAY_600 },
+  memberChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginRight: 8,
+  },
+  memberChipSelected: { backgroundColor: '#fff8f0', borderColor: CHEF_ORANGE },
+  memberChipText: { fontSize: 14, color: GRAY_600 },
+  memberChipTextSelected: { color: CHEF_ORANGE, fontWeight: '600' },
+  backToMeals: { paddingHorizontal: 16, paddingTop: 8 },
+  backToMealsText: { color: CHEF_ORANGE, fontWeight: '600', fontSize: 14 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   padded: { padding: 24 },
   header: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
@@ -753,6 +1641,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   dayChipSelected: { borderColor: CHEF_ORANGE, backgroundColor: '#fff8f0' },
+  dayChipClaimed: { borderColor: '#d1d5db', backgroundColor: '#f3f4f6' },
   dayChipDay: { fontSize: 12, fontWeight: '700', color: CHEF_GREY },
   dayChipDaySelected: { color: CHEF_ORANGE },
   dayChipMeta: { fontSize: 11, color: GRAY_600, marginTop: 2 },
@@ -767,35 +1656,54 @@ const styles = StyleSheet.create({
   },
   lockedTag: { fontSize: 12, color: ERROR_RED, marginTop: 4, fontWeight: '600' },
   sourceTag: { fontSize: 12, color: GRAY_600, marginTop: 4, fontStyle: 'italic' },
-  notesBox: { marginTop: 12, paddingHorizontal: 4 },
-  notesLabel: { fontSize: 14, fontWeight: '600', color: CHEF_GREY },
-  notesHint: { fontSize: 12, color: GRAY_600, marginTop: 4, marginBottom: 8 },
-  notesInput: {
-    minHeight: 72,
+  notesBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 12,
+    marginHorizontal: 4,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#e5e7eb',
-    borderRadius: 10,
-    padding: 10,
-    fontSize: 14,
-    color: CHEF_GREY,
     backgroundColor: '#fff',
-    textAlignVertical: 'top',
   },
-  notesReadonly: { fontSize: 14, color: GRAY_600, marginTop: 6 },
+  notesBtnText: { flex: 1, fontSize: 14, fontWeight: '600', color: CHEF_GREY },
+  notesBtnChevron: { marginLeft: 'auto' },
+  notesBadge: {
+    backgroundColor: '#fff7ed',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  notesBadgeText: { fontSize: 11, fontWeight: '700', color: CHEF_ORANGE },
   listWrap: { flex: 1 },
   listContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 120 },
   sectionHeader: {
-    backgroundColor: '#fafafa',
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginTop: 8,
+    marginBottom: 4,
   },
-  sectionHeaderText: {
-    fontSize: 11,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
+  sectionHeaderText: { flex: 1 },
+  sectionHeaderTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: CHEF_GREY,
+    textTransform: 'capitalize',
+  },
+  sectionHeaderMeta: {
+    fontSize: 12,
     color: GRAY_600,
+    marginTop: 2,
   },
   loadingOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -822,8 +1730,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   row: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: '#fff',
     padding: 12,
     borderRadius: 16,
@@ -831,8 +1737,49 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
   },
+  rowMain: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
   rowSelected: { borderColor: CHEF_ORANGE, backgroundColor: '#fff8f0' },
   rowDisabled: { opacity: 0.45 },
+  sizeRow: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: '#e5e7eb',
+  },
+  sizeLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: GRAY_600,
+    marginBottom: 8,
+  },
+  sizeChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  sizeChip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+  },
+  sizeChipSelected: {
+    borderColor: CHEF_ORANGE,
+    backgroundColor: '#fff8f0',
+  },
+  sizeChipText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: GRAY_600,
+  },
+  sizeChipTextSelected: {
+    color: CHEF_ORANGE,
+  },
   thumb: {
     width: 56,
     height: 56,
@@ -870,6 +1817,7 @@ const styles = StyleSheet.create({
   outlinedBtn: { borderRadius: 12, borderColor: CHEF_ORANGE },
   footerRow: { flexDirection: 'row', gap: 8 },
   footerBtn: { flex: 1 },
+  footerBtnFull: { flex: 1, width: '100%' },
   chipDisabled: { opacity: 0.45 },
   errorText: { color: ERROR_RED, textAlign: 'center' },
   mutedText: { color: GRAY_600 },

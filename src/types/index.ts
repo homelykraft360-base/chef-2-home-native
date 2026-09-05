@@ -33,6 +33,62 @@ export type SubscriptionStatus =
   | 'paused'
   | 'pending';
 
+export type HouseholdManagement = 'payer_assigns' | 'members_pick';
+
+export type MemberRole = 'payer' | 'member';
+
+export type MemberStatus = 'invited' | 'active' | 'removed';
+
+export interface SubscriptionMember {
+  id: number;
+  subscriptionId: number;
+  userId?: number | null;
+  role: MemberRole | string;
+  status: MemberStatus | string;
+  inviteEmail?: string | null;
+  invitePhone?: string | null;
+  useOwnerAddress: boolean;
+  weeklySessionsQuota?: number | null;
+  weeklyMealSlotsQuota?: number | null;
+}
+
+export interface HouseholdSubscriptionSummary {
+  id: number;
+  householdManagement: HouseholdManagement;
+  weeklySessions: number;
+}
+
+export interface HouseholdListResponse {
+  members: SubscriptionMember[];
+  seatsUsed: number;
+  seatsRemaining: number;
+  seatCap: number;
+  subscription: HouseholdSubscriptionSummary;
+}
+
+export interface InvitePreview {
+  inviterFirstName: string;
+  planName: string;
+  payerVisitLocation?: string;
+}
+
+export type PendingInviteStep = 'preview' | 'address';
+
+export interface PendingInvite extends InvitePreview {
+  step: PendingInviteStep;
+}
+
+export interface InviteAcceptAddressPayload {
+  token?: string;
+  useOwnerAddress: boolean;
+  streetAddress1?: string;
+  streetAddress2?: string;
+  city?: string;
+  state?: string;
+  visitLocation?: string;
+  localArea?: string;
+}
+
 export interface GenericResponse {
   error?: Nullable<string>;
 }
@@ -43,6 +99,8 @@ export interface Address {
   city: string;
   state: string;
   country: string;
+  visitLocation?: LagosLocation | '';
+  localArea?: string;
 }
 
 export interface Chef {
@@ -105,7 +163,7 @@ export interface Ingredient {
   imageUrl?: string;
 }
 
-export type LagosLocation = 'lagos-island' | 'lagos-mainland';
+export type LagosLocation = 'lagos-all' | 'lagos-island' | 'lagos-mainland';
 
 export interface LogisticsProps {
   location: LagosLocation | '';
@@ -171,6 +229,7 @@ export interface Subscription {
   additionalNotes?: string;
   visitingDays?: Record<string, string> | string;
   paystackSubscriptionCode?: string;
+  householdManagement?: HouseholdManagement;
 }
 
 export interface SubscriptionCreationRequest {
@@ -246,6 +305,7 @@ export type UserUpdateRequest = {
   email: string;
   firstName: string;
   lastName: string;
+  phoneNumber?: string;
   address: Omit<Address, 'country'>;
 };
 
@@ -304,11 +364,24 @@ export type DayOfWeek =
 
 export type MealSelectionSource = 'user' | 'prior_week' | 'admin_default';
 
+export type MealSize = '1.5L' | '3L' | '5L';
+
+export const MEAL_SIZE_OPTIONS: MealSize[] = ['1.5L', '3L', '5L'];
+
+export const DEFAULT_MEAL_SIZE: MealSize = '3L';
+
+export interface PlannedMeal extends Meal {
+  mealSize?: MealSize;
+  ingredientNotes?: string | null;
+  ingredientNotesOps?: string | null;
+  effectiveIngredientNotes?: string | null;
+}
+
 export interface MealPlanDay {
   id: number;
   dayOfWeek: DayOfWeek;
   source: MealSelectionSource;
-  meals: Meal[];
+  meals: PlannedMeal[];
 }
 
 export interface MealPlan {
@@ -324,9 +397,16 @@ export interface MealPlan {
   effectiveShoppingNotes?: string | null;
 }
 
+export interface MealPlanDayMealNotesInput {
+  mealId: number;
+  mealSize?: MealSize;
+  ingredientNotes?: string | null;
+}
+
 export interface MealPlanDayInput {
   dayOfWeek: DayOfWeek;
   mealIds: number[];
+  mealNotes?: MealPlanDayMealNotesInput[];
 }
 
 export interface MealPlanCreateRequest {
@@ -384,6 +464,7 @@ export interface MealPlanMealRow {
   mealId: number;
   dayOfWeek: DayOfWeek;
   mealName: string;
+  mealSize?: MealSize;
   mealImageUrl?: string | null;
   ingredients: MealPlanIngredientRow[];
   mealSubtotalKobo: number;
@@ -396,9 +477,13 @@ export interface MealPlanIngredientBreakdown {
   meals: MealPlanMealRow[];
   grossTotalKobo: number;
   excludedTotalKobo: number;
+  serviceChargeKobo: number;
   payableTotalKobo: number;
   paymentStatus: IngredientPaymentStatus;
   invoiceId?: number | null;
+  shoppingNotes?: string | null;
+  shoppingNotesOps?: string | null;
+  effectiveShoppingNotes?: string | null;
 }
 
 export interface IngredientExclusionInput {
@@ -438,4 +523,59 @@ export interface InvoiceIngredientBreakdown {
   paidAt?: string | null;
   amount: number;
   lines: InvoiceIngredientLine[];
+}
+
+export type TicketStatus = 'open' | 'closed';
+
+export interface SupportTicketMessage {
+  id: number;
+  authorUserId: number;
+  authorName: string;
+  isStaff: boolean;
+  body: string;
+  createdAt: string;
+}
+
+export interface SupportTicketSummary {
+  id: number;
+  title: string;
+  status: TicketStatus;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+  hasUnread?: boolean;
+}
+
+export interface SupportTicketUnreadSummary {
+  unreadCount: number;
+  hasUnread: boolean;
+}
+
+export interface SupportTicket {
+  id: number;
+  userId: number;
+  title: string;
+  status: TicketStatus;
+  createdAt: string;
+  updatedAt: string;
+  customerName?: string | null;
+  customerEmail?: string | null;
+  customerPhone?: string | null;
+  messages: SupportTicketMessage[];
+}
+
+export interface SupportTicketsListResponse {
+  tickets: SupportTicketSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface SupportTicketCreateRequest {
+  title: string;
+  message: string;
+}
+
+export interface SupportTicketMessageCreateRequest {
+  message: string;
 }

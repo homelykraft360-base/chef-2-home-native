@@ -3,13 +3,14 @@ import { Text, TextInput, TouchableOpacity } from 'react-native';
 import { type NativeStackScreenProps } from '@react-navigation/native-stack';
 import * as Clipboard from 'expo-clipboard';
 import { Button, Snackbar } from 'react-native-paper';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 
 import { resendCode, verifyOTP } from '../../api/authApi';
 import { CHEF_ORANGE } from '../../constants/theme';
 import type { AuthStackParamList } from '../../navigation/types';
 import type { SignInRequest, SignUpRequest, User } from '../../types';
 import { setPostLoginTab, setToken, setUser } from '../../store/authSlice';
+import type { RootState } from '../../store';
 
 import AuthLayout from './components/AuthLayout';
 import { authStyles } from './components/authStyles';
@@ -39,6 +40,9 @@ export default function OTPScreen({
     user: User;
   } | null>(null);
   const dispatch = useDispatch();
+  const pendingInviteToken = useSelector(
+    (state: RootState) => state.auth.pendingInviteToken,
+  );
 
   const handleVerify = async () => {
     setError('');
@@ -81,6 +85,9 @@ export default function OTPScreen({
     if (pendingAuth) {
       dispatch(setToken(pendingAuth.accessToken));
       dispatch(setUser(pendingAuth.user));
+      if (pendingInviteToken) {
+        dispatch(setPostLoginTab('AcceptInvite'));
+      }
       setPendingAuth(null);
     }
     setSuccessModalVisible(false);

@@ -4,7 +4,10 @@ import { fetchMealPlansInRange } from '../api/mealPlanApi';
 import type { MealPlan } from '../types';
 
 /** Fetches the plan (if any) that anchors on `weekStart`. */
-export default function useGetMealPlanForWeek(weekStart: string | null) {
+export default function useGetMealPlanForWeek(
+  weekStart: string | null,
+  targetUserId?: number,
+) {
   const [mealPlan, setMealPlan] = useState<MealPlan | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -12,6 +15,8 @@ export default function useGetMealPlanForWeek(weekStart: string | null) {
   const load = useCallback(async () => {
     if (!weekStart) {
       setMealPlan(null);
+      setLoading(false);
+      setError(null);
       return;
     }
     setLoading(true);
@@ -19,15 +24,39 @@ export default function useGetMealPlanForWeek(weekStart: string | null) {
     const { mealPlans, error: err } = await fetchMealPlansInRange(
       weekStart,
       weekStart,
+      targetUserId,
     );
     if (err) setError(String(err));
     else setMealPlan(mealPlans[0] ?? null);
     setLoading(false);
-  }, [weekStart]);
+  }, [weekStart, targetUserId]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!weekStart) {
+      setMealPlan(null);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setMealPlan(null);
+    setLoading(true);
+    setError(null);
+
+    void fetchMealPlansInRange(weekStart, weekStart, targetUserId).then(
+      ({ mealPlans, error: err }) => {
+        if (cancelled) return;
+        if (err) setError(String(err));
+        else setMealPlan(mealPlans[0] ?? null);
+        setLoading(false);
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [weekStart, targetUserId]);
 
   return { mealPlan, loading, error, refetch: load, setMealPlan };
 }

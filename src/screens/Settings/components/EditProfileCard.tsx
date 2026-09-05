@@ -3,13 +3,14 @@ import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { Button, Card } from 'react-native-paper';
 
 import { persistProfileUpdate } from '../../../api/userApi';
+import LagosAreaFields from '../../../components/LagosAreaFields';
 import {
   CHEF_GREY,
   CHEF_ORANGE,
   ERROR_RED,
   GRAY_600,
 } from '../../../constants/theme';
-import type { User } from '../../../types';
+import type { LagosLocation, User } from '../../../types';
 
 interface EditProfileCardProps {
   user: User;
@@ -33,6 +34,10 @@ export default function EditProfileCard({
     user.address?.streetAddress2 ?? '',
   );
   const [city, setCity] = useState(user.address?.city ?? '');
+  const [visitLocation, setVisitLocation] = useState<LagosLocation | ''>(
+    user.address?.visitLocation ?? '',
+  );
+  const [localArea, setLocalArea] = useState(user.address?.localArea ?? '');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,6 +45,14 @@ export default function EditProfileCard({
     const parts = fullName.trim().split(/\s+/);
     if (parts.length < 2) {
       setError('Please enter first and last name.');
+      return;
+    }
+    if (!visitLocation) {
+      setError('Select your Lagos area.');
+      return;
+    }
+    if (!localArea) {
+      setError('Select your local area.');
       return;
     }
     setError(null);
@@ -52,7 +65,9 @@ export default function EditProfileCard({
         streetAddress1: streetAddress1.trim(),
         streetAddress2: streetAddress2.trim(),
         city: city.trim(),
-        state: user.address?.state ?? '',
+        state: user.address?.state ?? 'lagos',
+        visitLocation,
+        localArea,
       },
     });
     setLoading(false);
@@ -120,6 +135,13 @@ export default function EditProfileCard({
             maxLength={100}
           />
         </View>
+        <LagosAreaFields
+          visitLocation={visitLocation}
+          localArea={localArea}
+          onVisitLocationChange={setVisitLocation}
+          onLocalAreaChange={setLocalArea}
+          disabled={loading}
+        />
         <View style={styles.row}>
           <View style={[styles.field, styles.halfField]}>
             <Text style={styles.label}>City</Text>
@@ -137,7 +159,7 @@ export default function EditProfileCard({
             <Text style={styles.label}>State</Text>
             <TextInput
               style={[styles.input, styles.inputDisabled]}
-              value={user.address?.state ?? ''}
+              value={user.address?.state ?? 'Lagos'}
               placeholder=""
               placeholderTextColor={GRAY_600}
               editable={false}
