@@ -364,14 +364,13 @@ export type DayOfWeek =
 
 export type MealSelectionSource = 'user' | 'prior_week' | 'admin_default';
 
-export type MealSize = '1.5L' | '3L' | '5L';
-
-export const MEAL_SIZE_OPTIONS: MealSize[] = ['1.5L', '3L', '5L'];
-
-export const DEFAULT_MEAL_SIZE: MealSize = '3L';
+export const MIN_PEOPLE_COUNT = 1;
+export const MAX_PEOPLE_COUNT = 6;
+export const PEOPLE_COUNT_OPTIONS = [1, 2, 3, 4, 5, 6] as const;
+export const DEFAULT_PEOPLE_COUNT = MIN_PEOPLE_COUNT;
 
 export interface PlannedMeal extends Meal {
-  mealSize?: MealSize;
+  peopleCount?: number;
   ingredientNotes?: string | null;
   ingredientNotesOps?: string | null;
   effectiveIngredientNotes?: string | null;
@@ -399,7 +398,7 @@ export interface MealPlan {
 
 export interface MealPlanDayMealNotesInput {
   mealId: number;
-  mealSize?: MealSize;
+  peopleCount?: number;
   ingredientNotes?: string | null;
 }
 
@@ -464,7 +463,7 @@ export interface MealPlanMealRow {
   mealId: number;
   dayOfWeek: DayOfWeek;
   mealName: string;
-  mealSize?: MealSize;
+  peopleCount?: number;
   mealImageUrl?: string | null;
   ingredients: MealPlanIngredientRow[];
   mealSubtotalKobo: number;
