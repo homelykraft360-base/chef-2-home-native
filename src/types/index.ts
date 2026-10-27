@@ -163,7 +163,32 @@ export interface Ingredient {
   imageUrl?: string;
 }
 
-export type LagosLocation = 'lagos-all' | 'lagos-island' | 'lagos-mainland';
+export type LagosLocation =
+  | 'lagos-all'
+  | 'lagos-island'
+  | 'lagos-island-extension'
+  | 'lagos-mainland-1'
+  | 'lagos-mainland-2';
+
+/** An Area / LGA inside a service zone (admin-managed). */
+export interface ServiceZoneArea {
+  id: number;
+  slug: string;
+  name: string;
+  zoneSlug: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+/** Service zone from GET /api/v1/service-zones. lagos-all is computed (isAggregate). */
+export interface ServiceZone {
+  slug: LagosLocation;
+  name: string;
+  perVisitFeeNaira: number;
+  sortOrder: number;
+  isAggregate: boolean;
+  areas: ServiceZoneArea[];
+}
 
 export interface LogisticsProps {
   location: LagosLocation | '';

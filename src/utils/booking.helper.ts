@@ -1,24 +1,21 @@
-import {
-  LAGOS_ISLAND_PER_VISIT_NAIRA,
-  LAGOS_MAINLAND_PER_VISIT_NAIRA,
-  WEEKLY_VISIT_MONTHLY_WEEKS,
-} from '../constants/booking';
+import { WEEKLY_VISIT_MONTHLY_WEEKS } from '../constants/booking';
 import type {
   LogisticsProps,
   PreferenceProps,
+  ServiceZone,
   SubscriptionCreationRequest,
   SubscriptionPlan,
 } from '../types';
 
+import { perVisitFeeForZone } from './serviceZones.utils';
 import { getPlanWeeklyVisitCap } from './subscriptionPlan.utils';
 
-export function computeVisitFeesNaira(logistics: LogisticsProps): number {
-  const perVisitNaira =
-    logistics.location === 'lagos-island' || logistics.location === 'lagos-all'
-      ? LAGOS_ISLAND_PER_VISIT_NAIRA
-      : logistics.location === 'lagos-mainland'
-        ? LAGOS_MAINLAND_PER_VISIT_NAIRA
-        : 0;
+/** Monthly visit fee in naira = weekly visits x zone per-visit fee x 4 (fees from the API). */
+export function computeVisitFeesNaira(
+  logistics: LogisticsProps,
+  zones: ServiceZone[],
+): number {
+  const perVisitNaira = perVisitFeeForZone(zones, logistics.location);
   const weeklyVisits = logistics.weeklySessionsCount;
   return perVisitNaira > 0
     ? weeklyVisits * perVisitNaira * WEEKLY_VISIT_MONTHLY_WEEKS
@@ -28,8 +25,9 @@ export function computeVisitFeesNaira(logistics: LogisticsProps): number {
 export function computeBookingMonthlyTotalNaira(
   plan: SubscriptionPlan,
   logistics: LogisticsProps,
+  zones: ServiceZone[],
 ): number {
-  return plan.amount / 100 + computeVisitFeesNaira(logistics);
+  return plan.amount / 100 + computeVisitFeesNaira(logistics, zones);
 }
 
 export function mapToSubscriptionCreationRequest({

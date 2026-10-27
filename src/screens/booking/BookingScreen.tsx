@@ -24,6 +24,7 @@ import { CHEF_GREEN, CHEF_GREY, CHEF_ORANGE, GRAY_600 } from '../../constants/th
 import useCreateInvoice from '../../hooks/useCreateInvoice';
 import useGetCurrentUserDetails from '../../hooks/useGetCurrentUserDetails';
 import useGetSubscriptionPlans from '../../hooks/useGetSubscriptionPlans';
+import useServiceZones from '../../hooks/useServiceZones';
 import type {
   LogisticsProps,
   Meal,
@@ -34,6 +35,7 @@ import {
   computeBookingMonthlyTotalNaira,
   mapToSubscriptionCreationRequest,
 } from '../../utils/booking.helper';
+import { zoneLabel } from '../../utils/serviceZones.utils';
 import {
   formatDate,
   formatToReadableNumber,
@@ -94,6 +96,12 @@ export default function BookingScreen() {
   const navigation = useNavigation();
   const { popup } = usePaystack();
   const { plans, loading: loadingPlans } = useGetSubscriptionPlans();
+  const {
+    zones,
+    loading: loadingZones,
+    error: zonesError,
+    refetch: refetchZones,
+  } = useServiceZones();
   const { user, refetch: refetchUser } = useGetCurrentUserDetails();
   const { createInvoice, loading: creatingInvoice } = useCreateInvoice();
 
@@ -204,7 +212,7 @@ export default function BookingScreen() {
       const amountNaira =
         amountKobo != null && Number.isFinite(amountKobo)
           ? amountKobo / 100
-          : computeBookingMonthlyTotalNaira(selectedPlan, logistics);
+          : computeBookingMonthlyTotalNaira(selectedPlan, logistics, zones);
 
       popup.checkout({
         email: user.email,
@@ -293,9 +301,9 @@ export default function BookingScreen() {
   const monthlyTotalNaira = useMemo(
     () =>
       selectedPlan
-        ? computeBookingMonthlyTotalNaira(selectedPlan, logistics)
+        ? computeBookingMonthlyTotalNaira(selectedPlan, logistics, zones)
         : 0,
-    [selectedPlan, logistics],
+    [selectedPlan, logistics, zones],
   );
 
   const planCap = selectedPlan ? getPlanWeeklyVisitCap(selectedPlan) : 5;
@@ -491,14 +499,28 @@ export default function BookingScreen() {
       {step === 2 && (
         <View style={styles.section}>
           <Text style={styles.label}>Location (Lagos)</Text>
+          {loadingZones ? (
+            <View style={styles.zoneStatusRow}>
+              <ActivityIndicator size="small" color={CHEF_ORANGE} />
+              <Text style={styles.zoneStatusText}>Loading areas…</Text>
+            </View>
+          ) : null}
+          {zonesError ? (
+            <View style={styles.zoneStatusRow}>
+              <Text style={styles.zoneErrorText}>
+                Could not load service areas.
+              </Text>
+              <Button compact mode="text" onPress={refetchZones}>
+                Retry
+              </Button>
+            </View>
+          ) : null}
           <View style={styles.row}>
             {(
               [
                 ['', 'Select'],
-                ['lagos-all', 'All'],
-                ['lagos-island', 'Island'],
-                ['lagos-mainland', 'Mainland'],
-              ] as const
+                ...zones.map((zone) => [zone.slug, zone.name] as const),
+              ] as ReadonlyArray<readonly [LogisticsProps['location'], string]>
             ).map(([loc, label]) => (
               <Button
                 key={String(loc) || 'none'}
@@ -681,13 +703,7 @@ export default function BookingScreen() {
                 ],
                 [
                   'Location',
-                  logistics.location === 'lagos-all'
-                    ? 'All Lagos'
-                    : logistics.location === 'lagos-island'
-                      ? 'Lagos Island'
-                      : logistics.location === 'lagos-mainland'
-                        ? 'Lagos Mainland'
-                        : '--',
+                  zoneLabel(zones, logistics.location),
                 ],
                 [
                   'Weekly sessions',
@@ -832,7 +848,15 @@ const styles = StyleSheet.create({
   labelSmall: { fontWeight: '600', color: GRAY_600, marginBottom: 6 },
   row: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
   flexBtn: { flex: 1, minWidth: 120 },
-  locBtn: { minWidth: 0, flex: 1 },
+  locBtn: { minWidth: 0, flexGrow: 1 },
+  zoneStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  zoneStatusText: { fontSize: 13, color: GRAY_600 },
+  zoneErrorText: { fontSize: 13, color: '#dc2626' },
   planCard: {
     borderWidth: 2,
     borderColor: '#e5e7eb',

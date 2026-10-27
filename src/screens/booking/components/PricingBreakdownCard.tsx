@@ -1,10 +1,12 @@
 import { StyleSheet, Text, View } from 'react-native';
 
+import useServiceZones from '../../../hooks/useServiceZones';
 import type { LogisticsProps, SubscriptionPlan } from '../../../types';
 import {
   computeBookingMonthlyTotalNaira,
   computeVisitFeesNaira,
 } from '../../../utils/booking.helper';
+import { zoneBySlug } from '../../../utils/serviceZones.utils';
 import { formatToReadableNumber } from '../../../utils/string.utils';
 
 function menuLineLabel(plan: SubscriptionPlan): string {
@@ -29,6 +31,8 @@ interface Props {
 }
 
 export default function PricingBreakdownCard({ plan, logistics }: Props) {
+  const { zones } = useServiceZones();
+
   if (!plan) {
     return (
       <View style={styles.card}>
@@ -40,17 +44,11 @@ export default function PricingBreakdownCard({ plan, logistics }: Props) {
 
   const menuAmountNaira = plan.amount / 100;
   const weeklyVisits = logistics.weeklySessionsCount;
-  const visitFeesNaira = computeVisitFeesNaira(logistics);
-  const visitFeesLabel =
-    logistics.location === 'lagos-all'
-      ? 'Weekly visits (All Lagos)'
-      : logistics.location === 'lagos-island'
-        ? 'Weekly visits (Lagos Island)'
-        : logistics.location === 'lagos-mainland'
-          ? 'Weekly visits (Lagos Mainland)'
-          : 'Weekly visits';
+  const visitFeesNaira = computeVisitFeesNaira(logistics, zones);
+  const zone = zoneBySlug(zones, logistics.location);
+  const visitFeesLabel = zone ? `Weekly visits (${zone.name})` : 'Weekly visits';
 
-  const totalNaira = computeBookingMonthlyTotalNaira(plan, logistics);
+  const totalNaira = computeBookingMonthlyTotalNaira(plan, logistics, zones);
 
   return (
     <View style={[styles.card, styles.cardElevated]}>

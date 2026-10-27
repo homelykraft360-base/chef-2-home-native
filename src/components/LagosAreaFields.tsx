@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   Pressable,
   ScrollView,
@@ -11,13 +12,15 @@ import {
 } from 'react-native';
 import { Button } from 'react-native-paper';
 
+import { CHEF_GREY, CHEF_ORANGE, GRAY_600 } from '../constants/theme';
+import useServiceZones from '../hooks/useServiceZones';
+import type { LagosLocation } from '../types';
 import {
   householdMemberAreaOptions,
   localAreaLabel,
-  localAreasForVisitLocation,
-  type LagosLocation,
-} from '../constants/lagosAreas';
-import { CHEF_GREY, CHEF_ORANGE, GRAY_600 } from '../constants/theme';
+  localAreasForZone,
+  zoneOptions,
+} from '../utils/serviceZones.utils';
 
 const WIDE_LAYOUT_MIN_WIDTH = 640;
 
@@ -32,12 +35,6 @@ type Props = {
   columnGap?: number;
 };
 
-const AREA_BUTTON_LABELS: Record<LagosLocation, string> = {
-  'lagos-all': 'All',
-  'lagos-island': 'Island',
-  'lagos-mainland': 'Mainland',
-};
-
 export default function LagosAreaFields({
   visitLocation,
   localArea,
@@ -50,16 +47,18 @@ export default function LagosAreaFields({
   const { width } = useWindowDimensions();
   const isWide = width >= WIDE_LAYOUT_MIN_WIDTH;
   const [pickerOpen, setPickerOpen] = useState(false);
+  const { zones, loading, error, refetch } = useServiceZones();
+  const fieldsDisabled = disabled || loading;
   const allowedAreas = useMemo(
     () =>
       payerVisitLocation != null && payerVisitLocation !== ''
-        ? householdMemberAreaOptions(payerVisitLocation)
-        : (['lagos-all', 'lagos-island', 'lagos-mainland'] as LagosLocation[]),
-    [payerVisitLocation],
+        ? householdMemberAreaOptions(zones, payerVisitLocation)
+        : zoneOptions(zones),
+    [zones, payerVisitLocation],
   );
   const localOptions = useMemo(
-    () => localAreasForVisitLocation(visitLocation),
-    [visitLocation],
+    () => localAreasForZone(zones, visitLocation),
+    [zones, visitLocation],
   );
 
   const handleAreaChange = (value: LagosLocation) => {
@@ -71,33 +70,47 @@ export default function LagosAreaFields({
     <View style={[isWide && styles.row, isWide && { gap: columnGap }]}>
       <View style={[styles.field, isWide && styles.halfField]}>
         <Text style={styles.label}>Area</Text>
+        {loading ? (
+          <View style={styles.statusRow}>
+            <ActivityIndicator size="small" color={CHEF_ORANGE} />
+            <Text style={styles.statusText}>Loading areas…</Text>
+          </View>
+        ) : null}
+        {error ? (
+          <View style={styles.statusRow}>
+            <Text style={styles.errorText}>Could not load service areas.</Text>
+            <Button compact mode="text" onPress={refetch}>
+              Retry
+            </Button>
+          </View>
+        ) : null}
         <View style={styles.segmentRow}>
           {allowedAreas.map((area) => (
             <Button
-              key={area}
-              mode={visitLocation === area ? 'contained' : 'outlined'}
-              onPress={() => handleAreaChange(area)}
+              key={area.value}
+              mode={visitLocation === area.value ? 'contained' : 'outlined'}
+              onPress={() => handleAreaChange(area.value)}
               style={styles.segmentBtn}
               compact
-              disabled={disabled}
+              disabled={fieldsDisabled}
             >
-              {AREA_BUTTON_LABELS[area]}
+              {area.label}
             </Button>
           ))}
         </View>
       </View>
 
       <View style={[styles.field, isWide && styles.halfField]}>
-        <Text style={styles.label}>Local area</Text>
+        <Text style={styles.label}>Area / LGA</Text>
         <TouchableOpacity
           style={[
             styles.selectTrigger,
-            (!visitLocation || disabled) && styles.selectTriggerDisabled,
+            (!visitLocation || fieldsDisabled) && styles.selectTriggerDisabled,
           ]}
           onPress={() => {
-            if (!disabled && visitLocation) setPickerOpen(true);
+            if (!fieldsDisabled && visitLocation) setPickerOpen(true);
           }}
-          disabled={disabled || !visitLocation}
+          disabled={fieldsDisabled || !visitLocation}
           activeOpacity={0.7}
         >
           <Text
@@ -107,9 +120,9 @@ export default function LagosAreaFields({
             ]}
           >
             {localArea
-              ? localAreaLabel(visitLocation, localArea)
+              ? localAreaLabel(zones, visitLocation, localArea)
               : visitLocation
-                ? 'Select local area'
+                ? 'Select Area / LGA'
                 : 'Select area first'}
           </Text>
         </TouchableOpacity>
@@ -118,7 +131,7 @@ export default function LagosAreaFields({
       <Modal visible={pickerOpen} transparent animationType="slide">
         <Pressable style={styles.modalBackdrop} onPress={() => setPickerOpen(false)} />
         <View style={styles.modalSheet}>
-          <Text style={styles.modalTitle}>Local area</Text>
+          <Text style={styles.modalTitle}>Area / LGA</Text>
           <ScrollView style={styles.modalList}>
             {localOptions.map((opt) => (
               <TouchableOpacity
@@ -164,8 +177,16 @@ const styles = StyleSheet.create({
     color: CHEF_GREY,
     marginBottom: 6,
   },
-  segmentRow: { flexDirection: 'row', gap: 8 },
-  segmentBtn: { flex: 1 },
+  segmentRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  segmentBtn: { flexGrow: 1 },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  statusText: { fontSize: 13, color: GRAY_600 },
+  errorText: { fontSize: 13, color: '#dc2626' },
   selectTrigger: {
     borderWidth: 1,
     borderColor: '#e5e7eb',

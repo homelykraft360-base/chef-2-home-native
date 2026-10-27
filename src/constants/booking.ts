@@ -1,6 +1,4 @@
-/** Lagos visit fee (₦ major units). Monthly = visits/week × rate × weeks. */
-export const LAGOS_ISLAND_PER_VISIT_NAIRA = 8_000;
-export const LAGOS_MAINLAND_PER_VISIT_NAIRA = 6_000;
+/** Weeks in the monthly visit-fee estimate (visits/week × zone fee × this). */
 export const WEEKLY_VISIT_MONTHLY_WEEKS = 4;
 
 export const dayOptions = [
