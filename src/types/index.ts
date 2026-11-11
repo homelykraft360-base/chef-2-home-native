@@ -190,9 +190,24 @@ export interface ServiceZone {
   areas: ServiceZoneArea[];
 }
 
+export type LocationBand = 'island' | 'mainland';
+export type BillingPeriod = 'monthly' | 'weekly';
+
+export interface SubscriptionPlanPrice {
+  id?: number;
+  planId?: number;
+  locationBand: LocationBand;
+  daysPerWeek: number;
+  billingPeriod: BillingPeriod;
+  weeks?: number | null;
+  amountKobo: number;
+}
+
 export interface LogisticsProps {
   location: LagosLocation | '';
   weeklySessionsCount: number;
+  billingPeriod?: BillingPeriod;
+  weeks?: number | null;
   selectedDays: string[];
   confirmKitchen: boolean;
   selectedDayAndTime: Record<string, string>;
@@ -266,6 +281,8 @@ export interface SubscriptionCreationRequest {
   visitingDays: Record<string, string>;
   preferences: Omit<PreferenceRequest, 'emailNotifications'>;
   location?: LagosLocation | '';
+  billingPeriod?: BillingPeriod;
+  weeks?: number | null;
 }
 
 export interface SubscriptionPlanMenu {
@@ -283,6 +300,7 @@ export interface SubscriptionPlan {
   multiplier: number;
   description?: string;
   menus?: SubscriptionPlanMenu[];
+  prices?: SubscriptionPlanPrice[];
   colorScheme?: string;
   paystackPlanId?: string;
 }

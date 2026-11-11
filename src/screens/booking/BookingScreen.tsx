@@ -26,14 +26,16 @@ import useGetCurrentUserDetails from '../../hooks/useGetCurrentUserDetails';
 import useGetSubscriptionPlans from '../../hooks/useGetSubscriptionPlans';
 import useServiceZones from '../../hooks/useServiceZones';
 import type {
+  BillingPeriod,
   LogisticsProps,
   Meal,
   PreferenceProps,
   SubscriptionPlan,
 } from '../../types';
 import {
-  computeBookingMonthlyTotalNaira,
+  computeBookingTotalNaira,
   mapToSubscriptionCreationRequest,
+  periodLabel,
 } from '../../utils/booking.helper';
 import { zoneLabel } from '../../utils/serviceZones.utils';
 import {
@@ -53,6 +55,8 @@ import { userNeedsContactDetails } from '../../utils/user.utils';
 const initialLogistics: LogisticsProps = {
   location: '',
   weeklySessionsCount: 1,
+  billingPeriod: 'monthly',
+  weeks: null,
   preference: undefined,
   selectedDays: [],
   selectedDayAndTime: {},
@@ -212,7 +216,7 @@ export default function BookingScreen() {
       const amountNaira =
         amountKobo != null && Number.isFinite(amountKobo)
           ? amountKobo / 100
-          : computeBookingMonthlyTotalNaira(selectedPlan, logistics, zones);
+          : computeBookingTotalNaira(selectedPlan, logistics) ?? 0;
 
       popup.checkout({
         email: user.email,
@@ -298,12 +302,10 @@ export default function BookingScreen() {
     }
   }, [proceedToPayment, refetchUser, resumePaymentAfterContact]);
 
-  const monthlyTotalNaira = useMemo(
+  const estimatedTotalNaira = useMemo(
     () =>
-      selectedPlan
-        ? computeBookingMonthlyTotalNaira(selectedPlan, logistics, zones)
-        : 0,
-    [selectedPlan, logistics, zones],
+      selectedPlan ? computeBookingTotalNaira(selectedPlan, logistics) : null,
+    [selectedPlan, logistics],
   );
 
   const planCap = selectedPlan ? getPlanWeeklyVisitCap(selectedPlan) : 5;
@@ -576,6 +578,48 @@ export default function BookingScreen() {
             </TouchableOpacity>
           </View>
 
+          <Text style={styles.label}>Billing period</Text>
+          <View style={styles.row}>
+            {(['monthly', 'weekly'] as BillingPeriod[]).map((period) => (
+              <Button
+                key={period}
+                mode={
+                  (logistics.billingPeriod || 'monthly') === period
+                    ? 'contained'
+                    : 'outlined'
+                }
+                compact
+                onPress={() =>
+                  setLogistics((p) => ({
+                    ...p,
+                    billingPeriod: period,
+                    weeks: period === 'weekly' ? p.weeks || 2 : null,
+                  }))
+                }
+                style={styles.locBtn}
+              >
+                {period}
+              </Button>
+            ))}
+          </View>
+          {(logistics.billingPeriod || 'monthly') === 'weekly' ? (
+            <View style={styles.row}>
+              {[1, 2, 3, 4].map((w) => (
+                <Button
+                  key={w}
+                  mode={logistics.weeks === w ? 'contained' : 'outlined'}
+                  compact
+                  onPress={() =>
+                    setLogistics((p) => ({ ...p, weeks: w }))
+                  }
+                  style={styles.locBtn}
+                >
+                  {w}w
+                </Button>
+              ))}
+            </View>
+          ) : null}
+
           <Text style={styles.label}>Visit days (select {dayPickCap})</Text>
           {availableDays.map((day) => {
             const disabledDay =
@@ -733,8 +777,17 @@ export default function BookingScreen() {
               Total
             </Text>
             <Text style={styles.payAmount}>
-              {formatToMoney(monthlyTotalNaira, false)}
-              <Text style={styles.payInterval}> /month</Text>
+              {estimatedTotalNaira == null
+                ? '—'
+                : formatToMoney(estimatedTotalNaira, false)}
+              <Text style={styles.payInterval}>
+                {' '}
+                /
+                {periodLabel(
+                  logistics.billingPeriod || 'monthly',
+                  logistics.weeks,
+                )}
+              </Text>
             </Text>
             <View style={styles.row}>
               <Button mode="outlined" onPress={onBack} style={styles.flexBtn}>

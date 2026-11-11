@@ -1,12 +1,10 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import useServiceZones from '../../../hooks/useServiceZones';
 import type { LogisticsProps, SubscriptionPlan } from '../../../types';
 import {
-  computeBookingMonthlyTotalNaira,
-  computeVisitFeesNaira,
+  computeBookingTotalNaira,
+  periodLabel,
 } from '../../../utils/booking.helper';
-import { zoneBySlug } from '../../../utils/serviceZones.utils';
 import { formatToReadableNumber } from '../../../utils/string.utils';
 
 function menuLineLabel(plan: SubscriptionPlan): string {
@@ -18,7 +16,7 @@ function menuLineLabel(plan: SubscriptionPlan): string {
         w.charAt(0).toLocaleUpperCase() + w.slice(1).toLocaleLowerCase(),
     )
     .join(' ');
-  return `${titled} menu`;
+  return `${titled} plan`;
 }
 
 function fmt(n: number) {
@@ -31,48 +29,47 @@ interface Props {
 }
 
 export default function PricingBreakdownCard({ plan, logistics }: Props) {
-  const { zones } = useServiceZones();
-
   if (!plan) {
     return (
       <View style={styles.card}>
         <Text style={styles.kicker}>Pricing breakdown</Text>
-        <Text style={styles.muted}>Select a plan to see your monthly estimate.</Text>
+        <Text style={styles.muted}>Select a plan to see your estimate.</Text>
       </View>
     );
   }
 
-  const menuAmountNaira = plan.amount / 100;
-  const weeklyVisits = logistics.weeklySessionsCount;
-  const visitFeesNaira = computeVisitFeesNaira(logistics, zones);
-  const zone = zoneBySlug(zones, logistics.location);
-  const visitFeesLabel = zone ? `Weekly visits (${zone.name})` : 'Weekly visits';
-
-  const totalNaira = computeBookingMonthlyTotalNaira(plan, logistics, zones);
+  const billingPeriod = logistics.billingPeriod || 'monthly';
+  const weeks = logistics.weeks ?? null;
+  const totalNaira = computeBookingTotalNaira(plan, logistics);
+  const period = periodLabel(billingPeriod, weeks);
 
   return (
     <View style={[styles.card, styles.cardElevated]}>
       <Text style={styles.kicker}>Pricing breakdown</Text>
       <View style={styles.row}>
-        <Text style={styles.rowLabel}>{menuLineLabel(plan)}</Text>
-        <Text style={styles.rowValue}>₦ {fmt(menuAmountNaira)}</Text>
+        <Text style={styles.rowLabel}>
+          {menuLineLabel(plan)} · {logistics.weeklySessionsCount} day
+          {logistics.weeklySessionsCount === 1 ? '' : 's'}/week
+        </Text>
+        <Text style={styles.rowValue}>
+          {totalNaira == null ? '—' : `₦ ${fmt(totalNaira)}`}
+        </Text>
       </View>
-      {visitFeesNaira > 0 ? (
-        <View style={styles.row}>
-          <Text style={styles.rowLabel}>
-            {visitFeesLabel} ×{weeklyVisits} weekly
-          </Text>
-          <Text style={styles.rowValue}>₦ {fmt(visitFeesNaira)}</Text>
-        </View>
-      ) : null}
       <View style={[styles.row, styles.totalRow]}>
-        <Text style={styles.totalLabel}>Estimated monthly</Text>
-        <Text style={styles.totalValue}>₦ {fmt(totalNaira)}</Text>
+        <Text style={styles.totalLabel}>Estimated total</Text>
+        <Text style={styles.totalValue}>
+          {totalNaira == null ? '—' : `₦ ${fmt(totalNaira)}`}/{period}
+        </Text>
       </View>
+      {totalNaira == null ? (
+        <Text style={styles.hint}>
+          Select a covered Lagos area and days (1–5) to see the matrix price.
+        </Text>
+      ) : null}
       <Text style={styles.disclaimer}>
-        Prices may change. This estimate reflects current plan and visit rates;
-        the amount confirmed at checkout applies to your subscription. See our
-        Terms & Conditions for how we update pricing.
+        Prices come from the plan matrix for your area and days (visit fees
+        included). The amount confirmed at checkout applies to your
+        subscription.
       </Text>
     </View>
   );
@@ -120,6 +117,12 @@ const styles = StyleSheet.create({
   },
   totalLabel: { fontSize: 15, fontWeight: '700', color: '#101928' },
   totalValue: { fontSize: 15, fontWeight: '700', color: '#101928' },
+  hint: {
+    marginTop: 12,
+    fontSize: 12,
+    lineHeight: 17,
+    color: '#b45309',
+  },
   disclaimer: {
     marginTop: 14,
     fontSize: 12,
