@@ -301,6 +301,8 @@ export interface SubscriptionPlan {
   description?: string;
   menus?: SubscriptionPlanMenu[];
   prices?: SubscriptionPlanPrice[];
+  /** Days-per-week options (1–5) offered for this plan. */
+  enabledDaysPerWeek?: number[];
   colorScheme?: string;
   paystackPlanId?: string;
 }

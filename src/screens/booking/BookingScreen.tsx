@@ -44,8 +44,12 @@ import {
   formatToMoney,
 } from '../../utils/string.utils';
 import {
+  clampWeeklySessions,
+  getEnabledDaysPerWeek,
   getPlanSummaryPeriodDays,
   getPlanWeeklyVisitCap,
+  getWeeklySessionsHint,
+  stepWeeklySessions,
 } from '../../utils/subscriptionPlan.utils';
 
 import PricingBreakdownCard from './components/PricingBreakdownCard';
@@ -149,9 +153,8 @@ export default function BookingScreen() {
 
   const handlePlanSelect = (plan: SubscriptionPlan) => {
     setSelectedPlan(plan);
-    const cap = getPlanWeeklyVisitCap(plan);
     setLogistics((prev) => {
-      const nextSessions = Math.min(cap, Math.max(1, prev.weeklySessionsCount));
+      const nextSessions = clampWeeklySessions(plan, prev.weeklySessionsCount);
       let selectedDays = prev.selectedDays;
       let selectedDayAndTime = { ...prev.selectedDayAndTime };
       if (selectedDays.length > nextSessions) {
@@ -171,9 +174,12 @@ export default function BookingScreen() {
 
   const handleWeeklySessionsDelta = (delta: 1 | -1) => {
     if (!selectedPlan) return;
-    const cap = getPlanWeeklyVisitCap(selectedPlan);
     setLogistics((prev) => {
-      const next = Math.min(cap, Math.max(1, prev.weeklySessionsCount + delta));
+      const next = stepWeeklySessions(
+        selectedPlan,
+        prev.weeklySessionsCount,
+        delta,
+      );
       let { selectedDays, selectedDayAndTime } = prev;
       if (selectedDays.length > next) {
         selectedDays = selectedDays.slice(0, next);
@@ -308,7 +314,11 @@ export default function BookingScreen() {
     [selectedPlan, logistics],
   );
 
+  const enabledDays = selectedPlan
+    ? getEnabledDaysPerWeek(selectedPlan)
+    : [1, 2, 3, 4, 5];
   const planCap = selectedPlan ? getPlanWeeklyVisitCap(selectedPlan) : 5;
+  const minEnabled = enabledDays[0] ?? 1;
   const dayPickCap = Math.max(
     1,
     Math.min(planCap, logistics.weeklySessionsCount),
@@ -546,16 +556,21 @@ export default function BookingScreen() {
             <TouchableOpacity
               style={[
                 styles.counterControl,
-                logistics.weeklySessionsCount <= 1 && styles.counterControlDisabled,
+                logistics.weeklySessionsCount <= minEnabled &&
+                  styles.counterControlDisabled,
               ]}
-              disabled={logistics.weeklySessionsCount <= 1}
+              disabled={logistics.weeklySessionsCount <= minEnabled}
               onPress={() => handleWeeklySessionsDelta(-1)}
             >
               <Text style={styles.counterControlText}>−</Text>
             </TouchableOpacity>
             <View style={styles.counterCenter}>
               <Text style={styles.counterVal}>{logistics.weeklySessionsCount}</Text>
-              <Text style={styles.counterHint}>Up to {planCap} per week</Text>
+              <Text style={styles.counterHint}>
+                {selectedPlan
+                  ? getWeeklySessionsHint(selectedPlan)
+                  : `Up to ${planCap} per week`}
+              </Text>
             </View>
             <TouchableOpacity
               style={[

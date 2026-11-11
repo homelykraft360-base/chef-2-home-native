@@ -7,7 +7,7 @@ import type {
   SubscriptionPlan,
 } from '../types';
 
-import { getPlanWeeklyVisitCap } from './subscriptionPlan.utils';
+import { clampWeeklySessions } from './subscriptionPlan.utils';
 
 const ISLAND_SLUGS = new Set([
   'lagos-island',
@@ -104,10 +104,7 @@ export function mapToSubscriptionCreationRequest({
     procureIngredients: false,
     delivery: logistics.preference === 'delivery',
     autoRenewal: true,
-    weeklySessions: Math.min(
-      getPlanWeeklyVisitCap(plan),
-      Math.max(1, logistics.weeklySessionsCount),
-    ),
+    weeklySessions: clampWeeklySessions(plan, logistics.weeklySessionsCount),
     preferences,
     visitingDays: logistics.selectedDayAndTime,
     billingPeriod,
