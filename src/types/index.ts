@@ -303,6 +303,8 @@ export interface SubscriptionPlan {
   prices?: SubscriptionPlanPrice[];
   /** Days-per-week options (1–5) offered for this plan. */
   enabledDaysPerWeek?: number[];
+  /** When false, weekly totals (1–4 weeks) are not offered. Missing → true. */
+  weeklyBillingEnabled?: boolean;
   colorScheme?: string;
   paystackPlanId?: string;
 }

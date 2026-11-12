@@ -25,6 +25,13 @@ export function getEnabledDaysPerWeek(
   return normalizeEnabledDaysPerWeek(plan?.enabledDaysPerWeek);
 }
 
+/** Missing/undefined → true for backward compatibility with older API payloads. */
+export function isWeeklyBillingEnabled(
+  plan: SubscriptionPlan | null | undefined,
+): boolean {
+  return plan?.weeklyBillingEnabled !== false;
+}
+
 export function getPlanWeeklyVisitCap(
   plan: SubscriptionPlan | null | undefined,
 ): number {

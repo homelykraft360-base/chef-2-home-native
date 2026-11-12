@@ -7,7 +7,10 @@ import type {
   SubscriptionPlan,
 } from '../types';
 
-import { clampWeeklySessions } from './subscriptionPlan.utils';
+import {
+  clampWeeklySessions,
+  isWeeklyBillingEnabled,
+} from './subscriptionPlan.utils';
 
 const ISLAND_SLUGS = new Set([
   'lagos-island',
@@ -36,6 +39,7 @@ export function lookupPlanAmountKobo(
     Math.min(5, Math.floor(logistics.weeklySessionsCount)),
   );
   const period: BillingPeriod = logistics.billingPeriod || 'monthly';
+  if (period === 'weekly' && !isWeeklyBillingEnabled(plan)) return null;
   const weeks =
     period === 'weekly'
       ? Math.max(1, Math.min(4, Math.floor(Number(logistics.weeks) || 0)))
@@ -98,7 +102,10 @@ export function mapToSubscriptionCreationRequest({
   logistics: LogisticsProps;
   preferences: PreferenceProps;
 }): SubscriptionCreationRequest {
-  const billingPeriod = logistics.billingPeriod || 'monthly';
+  const billingPeriod =
+    !isWeeklyBillingEnabled(plan) || logistics.billingPeriod !== 'weekly'
+      ? 'monthly'
+      : 'weekly';
   return {
     subscriptionPlanId: plan.id,
     procureIngredients: false,

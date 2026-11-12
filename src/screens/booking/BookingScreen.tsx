@@ -49,6 +49,7 @@ import {
   getPlanSummaryPeriodDays,
   getPlanWeeklyVisitCap,
   getWeeklySessionsHint,
+  isWeeklyBillingEnabled,
   stepWeeklySessions,
 } from '../../utils/subscriptionPlan.utils';
 
@@ -163,11 +164,15 @@ export default function BookingScreen() {
           selectedDays.map((d) => [d, prev.selectedDayAndTime[d] ?? '']),
         );
       }
+      const weeklyOff = !isWeeklyBillingEnabled(plan);
       return {
         ...prev,
         weeklySessionsCount: nextSessions,
         selectedDays,
         selectedDayAndTime,
+        ...(weeklyOff
+          ? { billingPeriod: 'monthly' as const, weeks: null }
+          : {}),
       };
     });
   };
@@ -318,6 +323,10 @@ export default function BookingScreen() {
     ? getEnabledDaysPerWeek(selectedPlan)
     : [1, 2, 3, 4, 5];
   const planCap = selectedPlan ? getPlanWeeklyVisitCap(selectedPlan) : 5;
+  const weeklyBillingOn = isWeeklyBillingEnabled(selectedPlan);
+  const periodOptions: BillingPeriod[] = weeklyBillingOn
+    ? ['monthly', 'weekly']
+    : ['monthly'];
   const minEnabled = enabledDays[0] ?? 1;
   const dayPickCap = Math.max(
     1,
@@ -595,7 +604,7 @@ export default function BookingScreen() {
 
           <Text style={styles.label}>Billing period</Text>
           <View style={styles.row}>
-            {(['monthly', 'weekly'] as BillingPeriod[]).map((period) => (
+            {periodOptions.map((period) => (
               <Button
                 key={period}
                 mode={
@@ -617,7 +626,8 @@ export default function BookingScreen() {
               </Button>
             ))}
           </View>
-          {(logistics.billingPeriod || 'monthly') === 'weekly' ? (
+          {weeklyBillingOn &&
+          (logistics.billingPeriod || 'monthly') === 'weekly' ? (
             <View style={styles.row}>
               {[1, 2, 3, 4].map((w) => (
                 <Button
