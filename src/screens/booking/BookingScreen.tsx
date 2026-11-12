@@ -45,12 +45,9 @@ import {
 } from '../../utils/string.utils';
 import {
   clampWeeklySessions,
-  getEnabledDaysPerWeek,
   getPlanSummaryPeriodDays,
   getPlanWeeklyVisitCap,
-  getWeeklySessionsHint,
   isWeeklyBillingEnabled,
-  stepWeeklySessions,
 } from '../../utils/subscriptionPlan.utils';
 
 import PricingBreakdownCard from './components/PricingBreakdownCard';
@@ -180,10 +177,9 @@ export default function BookingScreen() {
   const handleWeeklySessionsDelta = (delta: 1 | -1) => {
     if (!selectedPlan) return;
     setLogistics((prev) => {
-      const next = stepWeeklySessions(
+      const next = clampWeeklySessions(
         selectedPlan,
-        prev.weeklySessionsCount,
-        delta,
+        prev.weeklySessionsCount + delta,
       );
       let { selectedDays, selectedDayAndTime } = prev;
       if (selectedDays.length > next) {
@@ -319,15 +315,11 @@ export default function BookingScreen() {
     [selectedPlan, logistics],
   );
 
-  const enabledDays = selectedPlan
-    ? getEnabledDaysPerWeek(selectedPlan)
-    : [1, 2, 3, 4, 5];
   const planCap = selectedPlan ? getPlanWeeklyVisitCap(selectedPlan) : 5;
   const weeklyBillingOn = isWeeklyBillingEnabled(selectedPlan);
   const periodOptions: BillingPeriod[] = weeklyBillingOn
     ? ['monthly', 'weekly']
     : ['monthly'];
-  const minEnabled = enabledDays[0] ?? 1;
   const dayPickCap = Math.max(
     1,
     Math.min(planCap, logistics.weeklySessionsCount),
@@ -565,10 +557,10 @@ export default function BookingScreen() {
             <TouchableOpacity
               style={[
                 styles.counterControl,
-                logistics.weeklySessionsCount <= minEnabled &&
+                logistics.weeklySessionsCount <= 1 &&
                   styles.counterControlDisabled,
               ]}
-              disabled={logistics.weeklySessionsCount <= minEnabled}
+              disabled={logistics.weeklySessionsCount <= 1}
               onPress={() => handleWeeklySessionsDelta(-1)}
             >
               <Text style={styles.counterControlText}>−</Text>
@@ -576,9 +568,7 @@ export default function BookingScreen() {
             <View style={styles.counterCenter}>
               <Text style={styles.counterVal}>{logistics.weeklySessionsCount}</Text>
               <Text style={styles.counterHint}>
-                {selectedPlan
-                  ? getWeeklySessionsHint(selectedPlan)
-                  : `Up to ${planCap} per week`}
+                Up to {planCap} per week
               </Text>
             </View>
             <TouchableOpacity
