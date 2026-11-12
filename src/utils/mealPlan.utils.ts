@@ -1,5 +1,5 @@
-import type { DayOfWeek, MealPlan, MealSize } from '../types';
-import { DEFAULT_MEAL_SIZE } from '../types';
+import type { DayOfWeek, MealPlan } from '../types';
+import { DEFAULT_PEOPLE_COUNT } from '../types';
 
 export function normalizeWeekStart(value: string | null | undefined): string {
   if (!value) return '';
@@ -27,7 +27,7 @@ export function mealPlanMatchesContext(
 type VisitingDay = { day: DayOfWeek };
 
 export type DaySelections = Record<DayOfWeek, Set<number>>;
-export type DayMealSizes = Record<DayOfWeek, Record<number, MealSize>>;
+export type DayMealPeopleCounts = Record<DayOfWeek, Record<number, number>>;
 
 /** Merge household member plans into one day-keyed selection map. */
 export function mergeHouseholdWeekPlans(
@@ -35,17 +35,17 @@ export function mergeHouseholdWeekPlans(
   plansByUserId: Record<number, MealPlan>,
 ): {
   selections: DaySelections;
-  mealSizes: DayMealSizes;
+  mealPeopleCounts: DayMealPeopleCounts;
   dayOwners: Partial<Record<DayOfWeek, number>>;
 } {
   const selections = visitingDays.reduce((acc, { day }) => {
     acc[day] = new Set<number>();
     return acc;
   }, {} as DaySelections);
-  const mealSizes = visitingDays.reduce((acc, { day }) => {
+  const mealPeopleCounts = visitingDays.reduce((acc, { day }) => {
     acc[day] = {};
     return acc;
-  }, {} as DayMealSizes);
+  }, {} as DayMealPeopleCounts);
   const dayOwners: Partial<Record<DayOfWeek, number>> = {};
 
   for (const [userIdRaw, plan] of Object.entries(plansByUserId)) {
@@ -55,15 +55,15 @@ export function mergeHouseholdWeekPlans(
       if (planDay.meals.length === 0) continue;
       dayOwners[planDay.dayOfWeek] = userId;
       selections[planDay.dayOfWeek] = new Set(planDay.meals.map((m) => m.id));
-      mealSizes[planDay.dayOfWeek] = planDay.meals.reduce(
+      mealPeopleCounts[planDay.dayOfWeek] = planDay.meals.reduce(
         (acc, meal) => {
-          acc[meal.id] = meal.mealSize ?? DEFAULT_MEAL_SIZE;
+          acc[meal.id] = meal.peopleCount ?? DEFAULT_PEOPLE_COUNT;
           return acc;
         },
-        {} as Record<number, MealSize>,
+        {} as Record<number, number>,
       );
     }
   }
 
-  return { selections, mealSizes, dayOwners };
+  return { selections, mealPeopleCounts, dayOwners };
 }

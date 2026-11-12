@@ -48,10 +48,12 @@ import type {
   MealPlanDay,
   MealPlanDayInput,
   MealSelectionSource,
-  MealSize,
   Subscription,
 } from '../types';
-import { DEFAULT_MEAL_SIZE, MEAL_SIZE_OPTIONS } from '../types';
+import {
+  DEFAULT_PEOPLE_COUNT,
+  PEOPLE_COUNT_OPTIONS,
+} from '../types';
 import {
   addWeeks,
   currentWeekStart,
@@ -72,7 +74,7 @@ type VisitingDayEntry = { day: DayOfWeek; timeOfDay: string };
 
 type DaySelections = Record<DayOfWeek, Set<number>>;
 
-type DayMealSizes = Record<DayOfWeek, Record<number, MealSize>>;
+type DayMealPeopleCounts = Record<DayOfWeek, Record<number, number>>;
 
 const SOURCE_LABEL: Record<MealSelectionSource, string | null> = {
   user: null,
@@ -109,22 +111,25 @@ function emptySelections(visitingDays: VisitingDayEntry[]): DaySelections {
   }, {} as DaySelections);
 }
 
-function emptyMealSizes(visitingDays: VisitingDayEntry[]): DayMealSizes {
+function emptyMealPeopleCounts(
+  visitingDays: VisitingDayEntry[],
+): DayMealPeopleCounts {
   return visitingDays.reduce((acc, { day }) => {
     acc[day] = {};
     return acc;
-  }, {} as DayMealSizes);
+  }, {} as DayMealPeopleCounts);
 }
 
-function seedMealSizesFromPlan(
+function seedMealPeopleCountsFromPlan(
   visitingDays: VisitingDayEntry[],
   planDays: MealPlanDay[],
-): DayMealSizes {
-  const next = emptyMealSizes(visitingDays);
+): DayMealPeopleCounts {
+  const next = emptyMealPeopleCounts(visitingDays);
   for (const pd of planDays) {
     for (const meal of pd.meals) {
       if (next[pd.dayOfWeek]) {
-        next[pd.dayOfWeek][meal.id] = meal.mealSize ?? DEFAULT_MEAL_SIZE;
+        next[pd.dayOfWeek][meal.id] =
+          meal.peopleCount ?? DEFAULT_PEOPLE_COUNT;
       }
     }
   }
@@ -305,7 +310,9 @@ export default function MealsScreen() {
   const [mealsLoading, setMealsLoading] = useState(false);
 
   const [selections, setSelections] = useState<DaySelections>({} as DaySelections);
-  const [mealSizes, setMealSizes] = useState<DayMealSizes>({} as DayMealSizes);
+  const [mealPeopleCounts, setMealPeopleCounts] = useState<DayMealPeopleCounts>(
+    {} as DayMealPeopleCounts,
+  );
   const [activeDay, setActiveDay] = useState<DayOfWeek | null>(null);
   const [applyToAll, setApplyToAll] = useState(false);
   const [shoppingNotes, setShoppingNotes] = useState('');
@@ -425,9 +432,12 @@ export default function MealsScreen() {
   const applyPlanToLocalState = useCallback(
     (plan: MealPlan) => {
       const seeded = seedSelectionsFromPlan(visitingDays, plan.days);
-      const seededSizes = seedMealSizesFromPlan(visitingDays, plan.days);
+      const seededPeopleCounts = seedMealPeopleCountsFromPlan(
+        visitingDays,
+        plan.days,
+      );
       setSelections(seeded);
-      setMealSizes(seededSizes);
+      setMealPeopleCounts(seededPeopleCounts);
       seededContextKey.current = planningContextKey;
       setShoppingNotes(plan.shoppingNotes ?? '');
     },
@@ -486,7 +496,7 @@ export default function MealsScreen() {
   useEffect(() => {
     if (!visitingDays.length) {
       setSelections({} as DaySelections);
-      setMealSizes({} as DayMealSizes);
+      setMealPeopleCounts({} as DayMealPeopleCounts);
       setActiveDay(null);
       setPendingDayOwners({});
       seededContextKey.current = null;
@@ -495,7 +505,7 @@ export default function MealsScreen() {
     if (planLoading) {
       if (seededContextKey.current !== planningContextKey) {
         setSelections(emptySelections(visitingDays));
-        setMealSizes(emptyMealSizes(visitingDays));
+        setMealPeopleCounts(emptyMealPeopleCounts(visitingDays));
       }
       return;
     }
@@ -510,7 +520,7 @@ export default function MealsScreen() {
 
       if (!sameWeek) {
         setSelections(merged.selections);
-        setMealSizes(merged.mealSizes);
+        setMealPeopleCounts(merged.mealPeopleCounts);
         setPendingDayOwners({});
       } else {
         const pending = pendingDayOwnersRef.current;
@@ -526,16 +536,16 @@ export default function MealsScreen() {
           }
           return next;
         });
-        setMealSizes((prev) => {
-          const next = { ...merged.mealSizes };
+        setMealPeopleCounts((prev) => {
+          const next = { ...merged.mealPeopleCounts };
           for (const { day } of visitingDays) {
             const pendingOwner = pending[day];
             const localCount = prev[day] ? Object.keys(prev[day]).length : 0;
-            const serverCount = merged.mealSizes[day]
-              ? Object.keys(merged.mealSizes[day]).length
+            const serverCount = merged.mealPeopleCounts[day]
+              ? Object.keys(merged.mealPeopleCounts[day]).length
               : 0;
             if (pendingOwner != null || localCount > serverCount) {
-              next[day] = prev[day] ?? merged.mealSizes[day];
+              next[day] = prev[day] ?? merged.mealPeopleCounts[day];
             }
           }
           return next;
@@ -561,11 +571,11 @@ export default function MealsScreen() {
     const seeded = contextMealPlan
       ? seedSelectionsFromPlan(visitingDays, contextMealPlan.days)
       : emptySelections(visitingDays);
-    const seededSizes = contextMealPlan
-      ? seedMealSizesFromPlan(visitingDays, contextMealPlan.days)
-      : emptyMealSizes(visitingDays);
+    const seededPeopleCounts = contextMealPlan
+      ? seedMealPeopleCountsFromPlan(visitingDays, contextMealPlan.days)
+      : emptyMealPeopleCounts(visitingDays);
     setSelections(seeded);
-    setMealSizes(seededSizes);
+    setMealPeopleCounts(seededPeopleCounts);
     seededContextKey.current = planningContextKey;
     setActiveDay((prev) => (prev && seeded[prev] ? prev : visitingDays[0].day));
   }, [
@@ -628,17 +638,18 @@ export default function MealsScreen() {
         sizesUpdate = 'add';
       }
       if (sizesUpdate === 'remove') {
-        setMealSizes((sizesPrev) => {
-          const daySizes = { ...(sizesPrev[day] ?? {}) };
-          delete daySizes[mealId];
-          return { ...sizesPrev, [day]: daySizes };
+        setMealPeopleCounts((countsPrev) => {
+          const dayCounts = { ...(countsPrev[day] ?? {}) };
+          delete dayCounts[mealId];
+          return { ...countsPrev, [day]: dayCounts };
         });
       } else if (sizesUpdate === 'add') {
-        setMealSizes((sizesPrev) => ({
-          ...sizesPrev,
+        setMealPeopleCounts((countsPrev) => ({
+          ...countsPrev,
           [day]: {
-            ...(sizesPrev[day] ?? {}),
-            [mealId]: sizesPrev[day]?.[mealId] ?? DEFAULT_MEAL_SIZE,
+            ...(countsPrev[day] ?? {}),
+            [mealId]:
+              countsPrev[day]?.[mealId] ?? DEFAULT_PEOPLE_COUNT,
           },
         }));
       }
@@ -646,11 +657,11 @@ export default function MealsScreen() {
     });
   }, [showMemberPicker, ownerUserId]);
 
-  const setMealSize = useCallback(
-    (day: DayOfWeek, mealId: number, size: MealSize) => {
-      setMealSizes((prev) => ({
+  const setMealPeopleCount = useCallback(
+    (day: DayOfWeek, mealId: number, peopleCount: number) => {
+      setMealPeopleCounts((prev) => ({
         ...prev,
-        [day]: { ...(prev[day] ?? {}), [mealId]: size },
+        [day]: { ...(prev[day] ?? {}), [mealId]: peopleCount },
       }));
     },
     [],
@@ -665,11 +676,12 @@ export default function MealsScreen() {
         mealIds,
         mealNotes: mealIds.map((mealId) => ({
           mealId,
-          mealSize: mealSizes[day]?.[mealId] ?? DEFAULT_MEAL_SIZE,
+          peopleCount:
+            mealPeopleCounts[day]?.[mealId] ?? DEFAULT_PEOPLE_COUNT,
         })),
       };
     },
-    [selections, mealSizes],
+    [selections, mealPeopleCounts],
   );
 
   const buildPayloadForWeek = useCallback(
@@ -1417,8 +1429,9 @@ export default function MealsScreen() {
               const capReached = activeSelection.size >= MAX_PER_DAY;
               const isDisabled =
                 activeLocked || (!isSelected && capReached) || savingAny;
-              const currentSize =
-                mealSizes[activeDayInfo.day]?.[item.id] ?? DEFAULT_MEAL_SIZE;
+              const currentPeopleCount =
+                mealPeopleCounts[activeDayInfo.day]?.[item.id] ??
+                DEFAULT_PEOPLE_COUNT;
               return (
                 <View
                   style={[
@@ -1465,19 +1478,23 @@ export default function MealsScreen() {
                   </TouchableOpacity>
                   {isSelected ? (
                     <View style={styles.sizeRow}>
-                      <Text style={styles.sizeLabel}>Size</Text>
+                      <Text style={styles.sizeLabel}>People</Text>
                       <View style={styles.sizeChips}>
-                        {MEAL_SIZE_OPTIONS.map((size) => {
-                          const selected = currentSize === size;
+                        {PEOPLE_COUNT_OPTIONS.map((peopleCount) => {
+                          const selected = currentPeopleCount === peopleCount;
                           return (
                             <TouchableOpacity
-                              key={size}
+                              key={peopleCount}
                               style={[
                                 styles.sizeChip,
                                 selected && styles.sizeChipSelected,
                               ]}
                               onPress={() =>
-                                setMealSize(activeDayInfo.day, item.id, size)
+                                setMealPeopleCount(
+                                  activeDayInfo.day,
+                                  item.id,
+                                  peopleCount,
+                                )
                               }
                               disabled={activeLocked || savingAny}
                             >
@@ -1487,8 +1504,7 @@ export default function MealsScreen() {
                                   selected && styles.sizeChipTextSelected,
                                 ]}
                               >
-                                {size}
-                                {size === DEFAULT_MEAL_SIZE ? ' (Default)' : ''}
+                                {peopleCount}
                               </Text>
                             </TouchableOpacity>
                           );

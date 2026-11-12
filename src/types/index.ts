@@ -163,11 +163,51 @@ export interface Ingredient {
   imageUrl?: string;
 }
 
-export type LagosLocation = 'lagos-all' | 'lagos-island' | 'lagos-mainland';
+export type LagosLocation =
+  | 'lagos-all'
+  | 'lagos-island'
+  | 'lagos-island-extension'
+  | 'lagos-mainland-1'
+  | 'lagos-mainland-2';
+
+/** An Area / LGA inside a service zone (admin-managed). */
+export interface ServiceZoneArea {
+  id: number;
+  slug: string;
+  name: string;
+  zoneSlug: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+/** Service zone from GET /api/v1/service-zones. lagos-all is computed (isAggregate). */
+export interface ServiceZone {
+  slug: LagosLocation;
+  name: string;
+  perVisitFeeNaira: number;
+  sortOrder: number;
+  isAggregate: boolean;
+  areas: ServiceZoneArea[];
+}
+
+export type LocationBand = 'island' | 'mainland';
+export type BillingPeriod = 'monthly' | 'weekly';
+
+export interface SubscriptionPlanPrice {
+  id?: number;
+  planId?: number;
+  locationBand: LocationBand;
+  daysPerWeek: number;
+  billingPeriod: BillingPeriod;
+  weeks?: number | null;
+  amountKobo: number;
+}
 
 export interface LogisticsProps {
   location: LagosLocation | '';
   weeklySessionsCount: number;
+  billingPeriod?: BillingPeriod;
+  weeks?: number | null;
   selectedDays: string[];
   confirmKitchen: boolean;
   selectedDayAndTime: Record<string, string>;
@@ -241,6 +281,8 @@ export interface SubscriptionCreationRequest {
   visitingDays: Record<string, string>;
   preferences: Omit<PreferenceRequest, 'emailNotifications'>;
   location?: LagosLocation | '';
+  billingPeriod?: BillingPeriod;
+  weeks?: number | null;
 }
 
 export interface SubscriptionPlanMenu {
@@ -258,6 +300,9 @@ export interface SubscriptionPlan {
   multiplier: number;
   description?: string;
   menus?: SubscriptionPlanMenu[];
+  prices?: SubscriptionPlanPrice[];
+  /** When false, weekly totals (1–4 weeks) are not offered. Missing → true. */
+  weeklyBillingEnabled?: boolean;
   colorScheme?: string;
   paystackPlanId?: string;
 }
@@ -364,14 +409,13 @@ export type DayOfWeek =
 
 export type MealSelectionSource = 'user' | 'prior_week' | 'admin_default';
 
-export type MealSize = '1.5L' | '3L' | '5L';
-
-export const MEAL_SIZE_OPTIONS: MealSize[] = ['1.5L', '3L', '5L'];
-
-export const DEFAULT_MEAL_SIZE: MealSize = '3L';
+export const MIN_PEOPLE_COUNT = 1;
+export const MAX_PEOPLE_COUNT = 6;
+export const PEOPLE_COUNT_OPTIONS = [1, 2, 3, 4, 5, 6] as const;
+export const DEFAULT_PEOPLE_COUNT = MIN_PEOPLE_COUNT;
 
 export interface PlannedMeal extends Meal {
-  mealSize?: MealSize;
+  peopleCount?: number;
   ingredientNotes?: string | null;
   ingredientNotesOps?: string | null;
   effectiveIngredientNotes?: string | null;
@@ -399,7 +443,7 @@ export interface MealPlan {
 
 export interface MealPlanDayMealNotesInput {
   mealId: number;
-  mealSize?: MealSize;
+  peopleCount?: number;
   ingredientNotes?: string | null;
 }
 
@@ -464,7 +508,7 @@ export interface MealPlanMealRow {
   mealId: number;
   dayOfWeek: DayOfWeek;
   mealName: string;
-  mealSize?: MealSize;
+  peopleCount?: number;
   mealImageUrl?: string | null;
   ingredients: MealPlanIngredientRow[];
   mealSubtotalKobo: number;

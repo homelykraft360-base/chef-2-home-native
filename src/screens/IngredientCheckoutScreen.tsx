@@ -151,8 +151,8 @@ function MealCard({
           <Text style={styles.mealDay}>{dayLabel(meal.dayOfWeek)}</Text>
           <Text style={styles.mealName}>
             {meal.mealName}
-            {meal.mealSize ? (
-              <Text style={styles.mealSize}> · {meal.mealSize}</Text>
+            {meal.peopleCount ? (
+              <Text style={styles.peopleCount}> · Serves {meal.peopleCount}</Text>
             ) : null}
           </Text>
         </View>
@@ -518,7 +518,7 @@ const styles = StyleSheet.create({
   mealHeaderText: { flex: 1, minWidth: 0 },
   mealDay: { color: GRAY_600, fontSize: 12, marginBottom: 2 },
   mealName: { fontSize: 16, fontWeight: '600', color: CHEF_GREY },
-  mealSize: { fontSize: 14, fontWeight: '600', color: GRAY_600 },
+  peopleCount: { fontSize: 14, fontWeight: '600', color: GRAY_600 },
   mealSubtotal: { fontSize: 14, fontWeight: '600', color: CHEF_GREEN },
   mealExpandArea: {
     borderTopWidth: StyleSheet.hairlineWidth,

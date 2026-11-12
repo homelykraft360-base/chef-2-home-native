@@ -45,7 +45,7 @@ const ERROR_COPY: Record<InviteErrorKind, InviteErrorCopy> = {
   },
   household_area_mismatch: {
     title: 'Your area must match the household payer',
-    body: 'When the payer is on Lagos Island or Lagos Mainland, members with their own address must use the same area. Choose Same as owner, or pick the matching area.',
+    body: "When the payer has chosen a specific service zone, members with their own address must use the same zone. Choose Same as owner, or pick the payer's zone.",
   },
   generic: {
     title: "We couldn't accept this invite.",

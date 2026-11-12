@@ -24,24 +24,30 @@ import { CHEF_GREEN, CHEF_GREY, CHEF_ORANGE, GRAY_600 } from '../../constants/th
 import useCreateInvoice from '../../hooks/useCreateInvoice';
 import useGetCurrentUserDetails from '../../hooks/useGetCurrentUserDetails';
 import useGetSubscriptionPlans from '../../hooks/useGetSubscriptionPlans';
+import useServiceZones from '../../hooks/useServiceZones';
 import type {
+  BillingPeriod,
   LogisticsProps,
   Meal,
   PreferenceProps,
   SubscriptionPlan,
 } from '../../types';
 import {
-  computeBookingMonthlyTotalNaira,
+  computeBookingTotalNaira,
   mapToSubscriptionCreationRequest,
+  periodLabel,
 } from '../../utils/booking.helper';
+import { zoneLabel } from '../../utils/serviceZones.utils';
 import {
   formatDate,
   formatToReadableNumber,
   formatToMoney,
 } from '../../utils/string.utils';
 import {
+  clampWeeklySessions,
   getPlanSummaryPeriodDays,
   getPlanWeeklyVisitCap,
+  isWeeklyBillingEnabled,
 } from '../../utils/subscriptionPlan.utils';
 
 import PricingBreakdownCard from './components/PricingBreakdownCard';
@@ -51,6 +57,8 @@ import { userNeedsContactDetails } from '../../utils/user.utils';
 const initialLogistics: LogisticsProps = {
   location: '',
   weeklySessionsCount: 1,
+  billingPeriod: 'monthly',
+  weeks: null,
   preference: undefined,
   selectedDays: [],
   selectedDayAndTime: {},
@@ -94,6 +102,12 @@ export default function BookingScreen() {
   const navigation = useNavigation();
   const { popup } = usePaystack();
   const { plans, loading: loadingPlans } = useGetSubscriptionPlans();
+  const {
+    zones,
+    loading: loadingZones,
+    error: zonesError,
+    refetch: refetchZones,
+  } = useServiceZones();
   const { user, refetch: refetchUser } = useGetCurrentUserDetails();
   const { createInvoice, loading: creatingInvoice } = useCreateInvoice();
 
@@ -137,9 +151,8 @@ export default function BookingScreen() {
 
   const handlePlanSelect = (plan: SubscriptionPlan) => {
     setSelectedPlan(plan);
-    const cap = getPlanWeeklyVisitCap(plan);
     setLogistics((prev) => {
-      const nextSessions = Math.min(cap, Math.max(1, prev.weeklySessionsCount));
+      const nextSessions = clampWeeklySessions(plan, prev.weeklySessionsCount);
       let selectedDays = prev.selectedDays;
       let selectedDayAndTime = { ...prev.selectedDayAndTime };
       if (selectedDays.length > nextSessions) {
@@ -148,20 +161,26 @@ export default function BookingScreen() {
           selectedDays.map((d) => [d, prev.selectedDayAndTime[d] ?? '']),
         );
       }
+      const weeklyOff = !isWeeklyBillingEnabled(plan);
       return {
         ...prev,
         weeklySessionsCount: nextSessions,
         selectedDays,
         selectedDayAndTime,
+        ...(weeklyOff
+          ? { billingPeriod: 'monthly' as const, weeks: null }
+          : {}),
       };
     });
   };
 
   const handleWeeklySessionsDelta = (delta: 1 | -1) => {
     if (!selectedPlan) return;
-    const cap = getPlanWeeklyVisitCap(selectedPlan);
     setLogistics((prev) => {
-      const next = Math.min(cap, Math.max(1, prev.weeklySessionsCount + delta));
+      const next = clampWeeklySessions(
+        selectedPlan,
+        prev.weeklySessionsCount + delta,
+      );
       let { selectedDays, selectedDayAndTime } = prev;
       if (selectedDays.length > next) {
         selectedDays = selectedDays.slice(0, next);
@@ -204,7 +223,7 @@ export default function BookingScreen() {
       const amountNaira =
         amountKobo != null && Number.isFinite(amountKobo)
           ? amountKobo / 100
-          : computeBookingMonthlyTotalNaira(selectedPlan, logistics);
+          : computeBookingTotalNaira(selectedPlan, logistics) ?? 0;
 
       popup.checkout({
         email: user.email,
@@ -290,15 +309,17 @@ export default function BookingScreen() {
     }
   }, [proceedToPayment, refetchUser, resumePaymentAfterContact]);
 
-  const monthlyTotalNaira = useMemo(
+  const estimatedTotalNaira = useMemo(
     () =>
-      selectedPlan
-        ? computeBookingMonthlyTotalNaira(selectedPlan, logistics)
-        : 0,
+      selectedPlan ? computeBookingTotalNaira(selectedPlan, logistics) : null,
     [selectedPlan, logistics],
   );
 
   const planCap = selectedPlan ? getPlanWeeklyVisitCap(selectedPlan) : 5;
+  const weeklyBillingOn = isWeeklyBillingEnabled(selectedPlan);
+  const periodOptions: BillingPeriod[] = weeklyBillingOn
+    ? ['monthly', 'weekly']
+    : ['monthly'];
   const dayPickCap = Math.max(
     1,
     Math.min(planCap, logistics.weeklySessionsCount),
@@ -491,14 +512,28 @@ export default function BookingScreen() {
       {step === 2 && (
         <View style={styles.section}>
           <Text style={styles.label}>Location (Lagos)</Text>
+          {loadingZones ? (
+            <View style={styles.zoneStatusRow}>
+              <ActivityIndicator size="small" color={CHEF_ORANGE} />
+              <Text style={styles.zoneStatusText}>Loading areas…</Text>
+            </View>
+          ) : null}
+          {zonesError ? (
+            <View style={styles.zoneStatusRow}>
+              <Text style={styles.zoneErrorText}>
+                Could not load service areas.
+              </Text>
+              <Button compact mode="text" onPress={refetchZones}>
+                Retry
+              </Button>
+            </View>
+          ) : null}
           <View style={styles.row}>
             {(
               [
                 ['', 'Select'],
-                ['lagos-all', 'All'],
-                ['lagos-island', 'Island'],
-                ['lagos-mainland', 'Mainland'],
-              ] as const
+                ...zones.map((zone) => [zone.slug, zone.name] as const),
+              ] as ReadonlyArray<readonly [LogisticsProps['location'], string]>
             ).map(([loc, label]) => (
               <Button
                 key={String(loc) || 'none'}
@@ -522,7 +557,8 @@ export default function BookingScreen() {
             <TouchableOpacity
               style={[
                 styles.counterControl,
-                logistics.weeklySessionsCount <= 1 && styles.counterControlDisabled,
+                logistics.weeklySessionsCount <= 1 &&
+                  styles.counterControlDisabled,
               ]}
               disabled={logistics.weeklySessionsCount <= 1}
               onPress={() => handleWeeklySessionsDelta(-1)}
@@ -531,7 +567,9 @@ export default function BookingScreen() {
             </TouchableOpacity>
             <View style={styles.counterCenter}>
               <Text style={styles.counterVal}>{logistics.weeklySessionsCount}</Text>
-              <Text style={styles.counterHint}>Up to {planCap} per week</Text>
+              <Text style={styles.counterHint}>
+                Up to {planCap} per week
+              </Text>
             </View>
             <TouchableOpacity
               style={[
@@ -553,6 +591,49 @@ export default function BookingScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+
+          <Text style={styles.label}>Billing period</Text>
+          <View style={styles.row}>
+            {periodOptions.map((period) => (
+              <Button
+                key={period}
+                mode={
+                  (logistics.billingPeriod || 'monthly') === period
+                    ? 'contained'
+                    : 'outlined'
+                }
+                compact
+                onPress={() =>
+                  setLogistics((p) => ({
+                    ...p,
+                    billingPeriod: period,
+                    weeks: period === 'weekly' ? p.weeks || 2 : null,
+                  }))
+                }
+                style={styles.locBtn}
+              >
+                {period}
+              </Button>
+            ))}
+          </View>
+          {weeklyBillingOn &&
+          (logistics.billingPeriod || 'monthly') === 'weekly' ? (
+            <View style={styles.row}>
+              {[1, 2, 3, 4].map((w) => (
+                <Button
+                  key={w}
+                  mode={logistics.weeks === w ? 'contained' : 'outlined'}
+                  compact
+                  onPress={() =>
+                    setLogistics((p) => ({ ...p, weeks: w }))
+                  }
+                  style={styles.locBtn}
+                >
+                  {w}w
+                </Button>
+              ))}
+            </View>
+          ) : null}
 
           <Text style={styles.label}>Visit days (select {dayPickCap})</Text>
           {availableDays.map((day) => {
@@ -681,13 +762,7 @@ export default function BookingScreen() {
                 ],
                 [
                   'Location',
-                  logistics.location === 'lagos-all'
-                    ? 'All Lagos'
-                    : logistics.location === 'lagos-island'
-                      ? 'Lagos Island'
-                      : logistics.location === 'lagos-mainland'
-                        ? 'Lagos Mainland'
-                        : '--',
+                  zoneLabel(zones, logistics.location),
                 ],
                 [
                   'Weekly sessions',
@@ -717,8 +792,17 @@ export default function BookingScreen() {
               Total
             </Text>
             <Text style={styles.payAmount}>
-              {formatToMoney(monthlyTotalNaira, false)}
-              <Text style={styles.payInterval}> /month</Text>
+              {estimatedTotalNaira == null
+                ? '—'
+                : formatToMoney(estimatedTotalNaira, false)}
+              <Text style={styles.payInterval}>
+                {' '}
+                /
+                {periodLabel(
+                  logistics.billingPeriod || 'monthly',
+                  logistics.weeks,
+                )}
+              </Text>
             </Text>
             <View style={styles.row}>
               <Button mode="outlined" onPress={onBack} style={styles.flexBtn}>
@@ -832,7 +916,15 @@ const styles = StyleSheet.create({
   labelSmall: { fontWeight: '600', color: GRAY_600, marginBottom: 6 },
   row: { flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' },
   flexBtn: { flex: 1, minWidth: 120 },
-  locBtn: { minWidth: 0, flex: 1 },
+  locBtn: { minWidth: 0, flexGrow: 1 },
+  zoneStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  zoneStatusText: { fontSize: 13, color: GRAY_600 },
+  zoneErrorText: { fontSize: 13, color: '#dc2626' },
   planCard: {
     borderWidth: 2,
     borderColor: '#e5e7eb',
