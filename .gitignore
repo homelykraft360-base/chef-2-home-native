@@ -61,3 +61,7 @@ coverage/
 .venv-storegen/
 .venv-feature-graphic/
 .venv-icons/
+
+# Cursor IDE (never commit)
+.cursor/
+.cursorrules
